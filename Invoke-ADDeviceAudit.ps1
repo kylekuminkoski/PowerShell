@@ -3,7 +3,7 @@ Function Get-OldComputers {
     $filter += "(name=*)"
     $filter += "(|"
     # Laptop naming conventions
-    $filter += "(name=HVS*)(name=HVB*)(name=HVK*)(name=HVR*)(name=HVHS*)(name=INV*)"
+    $filter += "(name=HVS*)(name=HVB*)(name=HVK*)(name=HVR*)(name=domain*)(name=INV*)"
     # end OR
     $filter += ")"
     # Filter disabled computers
@@ -11,8 +11,8 @@ Function Get-OldComputers {
     # end AND
     $filter += ")"
 
-    $searchBase = "OU=InformationSystems,OU=HVHS.Computers,DC=hvhs,DC=org"
-    # $searchBaseTest = "OU=WSUS - Laptop Test,OU=Information Systems,OU=HVHS Computer,OU=TechOps,OU=Test,DC=hvhs,DC=org"
+    $searchBase = "OU=InformationSystems,OU=domain.Computers,DC=domain,DC=org"
+    # $searchBaseTest = "OU=WSUS - Laptop Test,OU=Information Systems,OU=domain Computer,OU=TechOps,OU=Test,DC=domain,DC=org"
     
      $computers = Get-ADComputer -LDAPFilter $filter -SearchBase $searchBase -Properties Description, OperatingSystem, LastLogonDate, whenCreated |
      Where-Object { ($_.LastLogonDate -lt [datetime]"1/1/2023") -and ($_.Enabled -eq $true) } |
@@ -91,7 +91,7 @@ Function Get-OldComputers {
 
         Set-ADComputer -Identity $Computer.DistinguishedName -Description $description
         Set-ADComputer -Identity $Computer.DistinguishedName -Enabled $false
-        Move-ADObject -Identity $Computer.DistinguishedName -TargetPath "OU=Disabled,OU=HVHS.Computers,DC=hvhs,DC=org"
+        Move-ADObject -Identity $Computer.DistinguishedName -TargetPath "OU=Disabled,OU=domain.Computers,DC=domain,DC=org"
 
         try {
             $user = Get-ADUser -Identity $Computer.Name -Properties Description, LastLogonDate -ErrorAction SilentlyContinue
@@ -107,7 +107,7 @@ Function Get-OldComputers {
 
                 Set-ADUser -Identity $user.DistinguishedName -Description $description
                 Set-ADUser -Identity $user.DistinguishedName -Enabled $false 
-                Move-ADObject -Identity $user.DistinguishedName -TargetPath "OU=Script_Disabled,OU=Disabled,OU=HVHS.Users,DC=hvhs,DC=org"
+                Move-ADObject -Identity $user.DistinguishedName -TargetPath "OU=Script_Disabled,OU=Disabled,OU=domain.Users,DC=domain,DC=org"
 
             }
 
@@ -126,7 +126,7 @@ Function Get-OldComputers {
     }
     
     $StaleDevicesReportTable = [ordered]@{}
-    $PSExcelPath = "\\hvhs-fs-04\GroupDrive\InformationTechnology\Software\Scripts_BatchFiles\PSExcel\1.0.2\PsExcel.psd1"
+    $PSExcelPath = "$PSScriptRoot\PSExcel\1.0.2\PsExcel.psd1"
     
     try {
         #Check whether the module has been loaded

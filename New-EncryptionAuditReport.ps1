@@ -20,7 +20,7 @@
     #>
 Function Get-ComputerList {
     Param(
-        [String]$SearchBase = "DC=hvhs,DC=org",
+        [String]$SearchBase = "DC=domain,DC=org",
 
         [Switch]$LaptopsOnly
     )
@@ -28,7 +28,7 @@ Function Get-ComputerList {
     $laptopFilter += "(name=*)"
     $laptopFilter += "(|"
     # Laptop naming conventions
-    $laptopFilter += "(name=HVS*L*)(name=HVB*L*)(name=HVK*L*)(name=HVR*L*)(name=HVS*T*)(name=HVB*T*)(name=HVK*T*)(name=HVR*T*)(name=HVHSLAP*)(name=*LAP*)"
+    $laptopFilter += "(name=HVS*L*)(name=HVB*L*)(name=HVK*L*)(name=HVR*L*)(name=HVS*T*)(name=HVB*T*)(name=HVK*T*)(name=HVR*T*)(name=domain*)(name=*LAP*)"
     # end OR
     $laptopFilter += ")"
     # Filter disabled computers
@@ -160,7 +160,7 @@ Function Format-AuditReport {
 
 $EncryptionReportTable = [ordered]@{}
 $StaleDevicesReportTable = [ordered]@{}
-$PSExcelPath = "\\hvhs-fs-04\GroupDrive\InformationTechnology\Software\Scripts_BatchFiles\PSExcel\1.0.2\PsExcel.psd1"
+$PSExcelPath = "$PSScriptRoot\PSExcel\1.0.2\PsExcel.psd1"
 
 try {
     #Check whether the module has been loaded
@@ -173,9 +173,9 @@ catch {
     Exit
 }
 
-$medcartComputerList = Get-ComputerList -SearchBase "OU=MedCarts,OU=HVHS.Computers,DC=hvhs,DC=org"
+$medcartComputerList = Get-ComputerList -SearchBase "OU=MedCarts,OU=domain.Computers,DC=domain,DC=org"
 
-$laptopList = Get-ComputerList -SearchBase "OU=HVHS.Computers,DC=hvhs,DC=org" -LaptopsOnly
+$laptopList = Get-ComputerList -SearchBase "OU=domain.Computers,DC=domain,DC=org" -LaptopsOnly
 
 $AllComputersList = $medcartComputerList + $laptopList
 

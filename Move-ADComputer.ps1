@@ -1,7 +1,7 @@
 $ComputerName = "HVS000T50"
 
 $TargetBaseOU = "InformationSystems"
-$OU = Get-ADOrganizationalUnit -Filter {Name -like $TargetBaseOU} -SearchBase "OU=HVHS.Computers,DC=hvhs,DC=org" -SearchScope 1
+$OU = Get-ADOrganizationalUnit -Filter {Name -like $TargetBaseOU} -SearchBase "OU=domain.Computers,DC=domain,DC=org" -SearchScope 1
 
 $Computer = Get-ADComputer $ComputerName
 

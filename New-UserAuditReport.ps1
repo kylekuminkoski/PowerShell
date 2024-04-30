@@ -1,6 +1,6 @@
 Function Get-UserList {
     Param(
-        [String]$SearchBase = "DC=hvhs,DC=org",
+        [String]$SearchBase = "DC=domain,DC=com",
 
         [Switch]$DisabledUsers
     )
@@ -69,10 +69,13 @@ Function New-ReportItem {
             if ($DisabledUsers -and ($timeSincePassChange -gt 365)) {
                 $ReportItem.'Action (Disabled/Deleted)' = "Deleted"
                 Write-Host "$($User.Name) would be deleted"
+                #Remove-ADUser -Identity $User.DistinguishedName
 
             } else {
                 $ReportItem.'Action (Disabled/Deleted)' = "Disabled"
                 Write-Host "$($User.Name) would be disabled" 
+                #Set-ADUser -Identity $User.DistinguishedName -Enabled $false 
+                #Move-ADObject -Identity $User.DistinguishedName -TargetPath "OU=Script_Disabled,OU=Disabled,OU=Test,DC=domain,DC=com"
             }
 
 
@@ -89,7 +92,7 @@ Function Format-AuditReport {
     )
 
     $currentDate = Get-Date -Format "MM_dd_yyyy"
-    $WorkBookPath = "H:\Profile\Documents\$($Env:USERNAME)\My Documents\UserAuditReport_$currentDate.xlsx"
+    $WorkBookPath = "$PSScriptRoot\$($Env:USERNAME)\UserAuditReport_$currentDate.xlsx"
 
     $EnabledUsersTable.values | Sort-Object -Property Name | Export-XLSX -Path $WorkBookPath -WorksheetName "Enabled Users" -Table -AutoFit -Force
 
@@ -99,7 +102,7 @@ Function Format-AuditReport {
 
 $EnabledUsersTable = [ordered]@{}
 $DisabledUsersTable = [ordered]@{}
-$PSExcelPath = "\\hvhs-fs-04\GroupDrive\InformationTechnology\Software\Scripts_BatchFiles\PSExcel\1.0.2\PsExcel.psd1"
+$PSExcelPath = "$PSScriptRoot\PSExcel\1.0.2\PsExcel.psd1"
 
 try {
     #Check whether the module has been loaded
@@ -112,7 +115,9 @@ catch {
     Exit
 }
 
-Get-UserList -SearchBase "OU=Test,DC=hvhs,DC=org" | ForEach-Object { $_ | New-ReportItem -Table $EnabledUsersTable }
-Get-UserList -SearchBase "OU=Test,DC=hvhs,DC=org" -DisabledUsers | ForEach-Object { $_ | New-ReportItem -Table $DisabledUsersTable -DisabledUsers }
+$SearchBase = "OU=Test,DC=domain,DC=com"
+
+Get-UserList -SearchBase $SearchBase | ForEach-Object { $_ | New-ReportItem -Table $EnabledUsersTable }
+Get-UserList -SearchBase $SearchBase -DisabledUsers | ForEach-Object { $_ | New-ReportItem -Table $DisabledUsersTable -DisabledUsers }
 
 Format-AuditReport -EnabledUsersTable $EnabledUsersTable -DisabledUsersTable $DisabledUsersTable

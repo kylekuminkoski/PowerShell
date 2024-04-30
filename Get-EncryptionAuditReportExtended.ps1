@@ -17,7 +17,7 @@ Stale Devices Report, AD Bitlocker Report, Local Computer Bitlocker Report
 # Created on: July 3rd, 2023
 #
 # Example Usage:
-# Get-EncryptionAuditReport -SearchBase "OU=HVHS Computer,OU=TechOps,OU=Test,DC=hvhs,DC=org"
+# Get-EncryptionAuditReport -SearchBase "OU=Test,DC=domain,DC=org"
 
 [CmdletBinding()]
 
@@ -210,17 +210,17 @@ foreach ($computerName in $computerNames) {
 $currentDate = Get-Date -Format "MM_dd_yyyy"
 $scannedOU = Get-ADOrganizationalUnit -Identity $SearchBase -Properties * | Select-Object -ExpandProperty ou
 If ($staleDevices.Count -eq 0) { Write-Host "No Stale Devices Found. `n " } else {
-    $staleDevices.values | Export-Csv -Path "\\hvhs-fs-04\HomeDrive\$($Env:USERNAME)\staleDevicesReport_$($scannedOU)_$($currentDate).csv"
+    $staleDevices.values | Export-Csv -Path "$PSScriptRoot\$($Env:USERNAME)\staleDevicesReport_$($scannedOU)_$($currentDate).csv"
     Write-Host "Stale Devices Report successfully exported to HomeDrive.`n"
 }
 
 If ($ADResults.Count -eq 0) { Write-Host "No Bitlocker Devices Found in Active Directory. `n" } else {
-    $ADResults.values | Export-Csv -Path "\\hvhs-fs-04\HomeDrive\$($Env:USERNAME)\ADBitlockerReport_$($scannedOU)_$($currentDate).csv"
+    $ADResults.values | Export-Csv -Path "$PSScriptRoot\$($Env:USERNAME)\ADBitlockerReport_$($scannedOU)_$($currentDate).csv"
     Write-Host "AD Bitlocker Report successfully exported to HomeDrive.`n"
 }
 
 If ($localResults.Count -eq 0) { Write-Host "No Bitlocker Information Found in Device Registries. `n" } else {
-    $localResults.values | Export-Csv -Path "\\hvhs-fs-04\HomeDrive\$($Env:USERNAME)\LocalBitlockerReport_$($scannedOU)_$($currentDate).csv"
+    $localResults.values | Export-Csv -Path "$PSScriptRoot\$($Env:USERNAME)\LocalBitlockerReport_$($scannedOU)_$($currentDate).csv"
     Write-Host "Local Device Bitlocker Report successfully exported to HomeDrive. `n"
 }
 

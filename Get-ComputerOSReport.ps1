@@ -1,4 +1,4 @@
-$IPList = Import-Csv "H:\Profile\Desktop\k130k130\Desktop\Work\WindowsXP_IPs.csv" | Select-Object -ExpandProperty 'IP Address'
+$IPList = Import-Csv "$PSScriptRoot\WindowsXP_IPs.csv" | Select-Object -ExpandProperty 'IP Address'
 $outputList = [ordered]@{}
 
 $IPList.Count
@@ -95,4 +95,4 @@ foreach ($ip in $IPList) {
 }
 
 $currentDate = Get-Date -Format "MM_dd_yyyy"
-$outputList.values | Export-Csv -Path "\\hvhs-fs-04\HomeDrive\$($Env:USERNAME)\OS_Version_Report_$($currentDate).csv"
+$outputList.values | Export-Csv -Path "$PSScriptRoot\$($Env:USERNAME)\OS_Version_Report_$($currentDate).csv"

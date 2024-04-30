@@ -66,4 +66,4 @@ foreach ($Computer in $Computers) {
 }
 $date = Get-Date -Format "MM_dd_yyyy"
 
-$resultsTable.values | Export-Csv -Path "H:\Profile\StaleDevicesReport_$date.csv"
+$resultsTable.values | Export-Csv -Path "$PSScriptRoot\StaleDevicesReport_$date.csv"

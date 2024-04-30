@@ -59,7 +59,7 @@ if (-not $InstallCitrixPlugin) {
     exit
 }
 
-$InstallPath = "\\hvhs-fs-04\GroupDrive\InformationTechnology\Software\zoom\ZoomCitrixHDXMediaPlugin.msi"
+$InstallPath = "$PSScriptRoot\ZoomCitrixHDXMediaPlugin.msi"
 $LocalPath = Copy-Item $InstallPath -Destination "$env:PUBLIC\Downloads" -PassThru
 
 Start-Process msiexec.exe -ArgumentList "/i $($LocalPath.FullName) /qn /norestart" -WorkingDirectory $LocalPath.DirectoryName -Wait
