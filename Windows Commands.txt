@@ -3,3 +3,6 @@
 
 # cmd/PowerShell disable autologon
     powershell -c "Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\UserSwitch' Enabled 1"
+
+# Enable OneDrive Sync Reports
+reg.exe add HKLM\Software\Policies\Microsoft\OneDrive /v EnableSyncAdminReports /t REG_DWORD /d 1
