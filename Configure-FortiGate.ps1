@@ -1,4 +1,3 @@
-# Initialization Region
 $Configs = @{}
 
 Function Initialize-Variables {
