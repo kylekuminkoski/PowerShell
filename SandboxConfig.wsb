@@ -1,0 +1,16 @@
+<Configuration>
+<MappedFolders>
+  <MappedFolder>
+    <HostFolder>C:\Users\kkuminkoski\Documents\Sandbox</HostFolder>
+    <SandboxFolder>C:\Users\WDAGUtilityAccount\Downloads</SandboxFolder>
+    <ReadOnly>true</ReadOnly>
+  </MappedFolder>
+  <MappedFolder>
+    ...
+  </MappedFolder>
+</MappedFolders>
+<MemoryInMB>4000</MemoryInMB>
+  <LogonCommand>
+    <Command>explorer.exe C:\Users\WDAGUtilityAccount\Downloads</Command>
+  </LogonCommand>
+</Configuration>
