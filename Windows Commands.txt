@@ -19,3 +19,6 @@ rundll32 printui.dll,PrintUIEntry /il
 
 # View stored credentials
 rundll32.exe keymgr.dll,KRShowKeyMgr
+
+# Search for file extensions and return full Path
+Get-ChildItem -path C:\ -filter *.cpz -file -ErrorAction silentlycontinue -recurse
