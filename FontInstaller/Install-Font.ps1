@@ -26,7 +26,7 @@ foreach ($Font in $FontsToInstall) {
     $RegKey = Get-Item $InstalledFonts
     If ($Font.Name -ne $RegKey.GetValue($Font.BaseName)) {
         Copy-Item $Font "C:\Windows\Fonts"
-       $Reg = New-ItemProperty -Name $Font.BaseName -Path "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts" -PropertyType string -Value $Font.Name -Force 
+        $null = New-ItemProperty -Name $Font.BaseName -Path "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts" -PropertyType string -Value $Font.Name -Force 
         Write-Host "Installed Font $Name" -ForegroundColor Cyan
     }
     else {

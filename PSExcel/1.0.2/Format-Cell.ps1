@@ -325,7 +325,7 @@
                     {
                         $Border = 'Top', 'Bottom', 'Left', 'Right'
                     }
-                    foreach($Side in @( $Border | Select -Unique ) )
+                    foreach($Side in @( $Border | Select-Object -Unique ) )
                     {
                         if(-not $BorderStyle)
                         {
