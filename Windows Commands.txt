@@ -22,3 +22,10 @@ rundll32.exe keymgr.dll,KRShowKeyMgr
 
 # Search for file extensions and return full Path
 Get-ChildItem -path C:\ -filter *.cpz -file -ErrorAction silentlycontinue -recurse
+
+# Update FortiClient Signatures
+"c:\Program Files\Fortinet\FortiClient\update_task.exe" -svd_01
+
+# Remove QuickBooks Update Cache Files
+Get-ChildItem "C:\ProgramData\Intuit\QuickBooks 20*\Components\DownloadQB*\SPatch*.dat" -Force | Remove-Item -Recurse -Force
+Get-ChildItem "C:\ProgramData\Intuit\QuickBooks 20*\Components\QBUpdateCache" -Force | Remove-Item -Recurse -Force

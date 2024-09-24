@@ -208,7 +208,9 @@ Foreach ($File in $arrFilesToBeDeleted) {
     }
 }
 
-
+# Remove QuickBooks Update Cache Files
+Get-ChildItem "C:\ProgramData\Intuit\QuickBooks 20*\Components\DownloadQB*\SPatch*.dat" -Force | Remove-Item -Recurse -Force
+Get-ChildItem "C:\ProgramData\Intuit\QuickBooks 20*\Components\QBUpdateCache" -Force | Remove-Item -Recurse -Force
 
 Write-Host "`nDefragmenting Drive"
 Start-Process Defrag.exe -NoNewWindow -ArgumentList "C: /U /V" -Wait
