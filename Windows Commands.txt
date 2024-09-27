@@ -29,3 +29,18 @@ Get-ChildItem -path C:\ -filter *.cpz -file -ErrorAction silentlycontinue -recur
 # Remove QuickBooks Update Cache Files
 Get-ChildItem "C:\ProgramData\Intuit\QuickBooks 20*\Components\DownloadQB*\SPatch*.dat" -Force | Remove-Item -Recurse -Force
 Get-ChildItem "C:\ProgramData\Intuit\QuickBooks 20*\Components\QBUpdateCache" -Force | Remove-Item -Recurse -Force
+
+# Get VM Host Name
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters"  | Select-Object HostName
+
+# Get immutableID to Fix Azure Sync Error
+$guid =(Get-ADUser $ADUser).Objectguid
+
+$immutableID=[system.convert]::ToBase64String($guid.tobytearray())
+
+Connect-AzureAD
+
+Set-AzureADUser -ObjectId $guid -ImmutableId $immutableID
+
+# Get Windows Version Information 
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
