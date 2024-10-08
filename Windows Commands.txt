@@ -44,3 +44,32 @@ Set-AzureADUser -ObjectId $guid -ImmutableId $immutableID
 
 # Get Windows Version Information 
 Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+
+#Create UEFI Bootable ISO 
+oscdimg -m -o -u2 -udfver102 -bootdata:2#p0,e,b"C:\ISO_Working_Directory\boot\etfsboot.com"#pEF,e,b"C:\ISO_Working_Directory\efi\microsoft\boot\efisys.bin" C:\ISO_Working_Directory C:\Win11Lab\BPT_Base_Win11_v2.1.iso
+
+# BPT Image Copy Start Menu to Default User 
+robocopy "C:\Users\Administrator\AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\LocalState" "C:\Users\Default\AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\LocalState" "start2.bin"
+
+
+
+# Start Menu Layout
+<?xml version="1.0" encoding="utf-8"?>
+<LayoutModificationTemplate
+    xmlns="http://schemas.microsoft.com/Start/2014/LayoutModification"
+    xmlns:defaultlayout="http://schemas.microsoft.com/Start/2014/FullDefaultLayout"
+    xmlns:start="http://schemas.microsoft.com/Start/2014/StartLayout"
+    xmlns:taskbar="http://schemas.microsoft.com/Start/2014/TaskbarLayout"
+    Version="1">
+  <CustomTaskbarLayoutCollection>
+    <defaultlayout:TaskbarLayout>
+      <taskbar:TaskbarPinList>
+        <taskbar:DesktopApp DesktopApplicationID="Microsoft.Windows.Explorer" />
+        <taskbar:DesktopApp DesktopApplicationLinkPath="C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Google Chrome.lnk" />
+        <taskbar:DesktopApp DesktopApplicationLinkPath="C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Outlook (classic).lnk" />
+        <taskbar:DesktopApp DesktopApplicationLinkPath="C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Word.lnk" />
+        <taskbar:DesktopApp DesktopApplicationLinkPath="C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Excel.lnk" />
+      </taskbar:TaskbarPinList>
+    </defaultlayout:TaskbarLayout>
+ </CustomTaskbarLayoutCollection>
+</LayoutModificationTemplate>
