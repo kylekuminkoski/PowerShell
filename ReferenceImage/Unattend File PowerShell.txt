@@ -1,0 +1,48 @@
+Write-Host "Select the site by number and press enter. Type any key and press enter to skip this step (Set locations manually)`n`n1. Greenville`n2. Maryland`n3. Richmond`n4. Virginia Beach" -ForegroundColor Yellow;$Site = Read-Host "`nInput Here"
+
+
+Switch ($Site)
+{
+    '1' {
+    #Install Ninja for Brandito Midwest
+    (New-Object System.Net.WebClient).DownloadFile("https://app.ninjarmm.com/agent/installer/0b890f2a-7513-4bb4-bb35-9ba13c47b658/branditomidwestd960a3-6.0.1901-windows-installer.msi", "$env:TEMP/AgentInstall.exe");start-process -Wait "$env:TEMP/AgentInstall.msi"
+
+    #Install CWC for Brandito Midwest
+    wget "https://sc.bastionpoint.com/Bin/ScreenConnect.ClientSetup.exe?e=Access&y=Guest&c=Brandito&c=Midwest&c=&c=&c=&c=&c=&c=" -OutFile "C:\Bastionpoint\CWC.exe"
+    Start-Process -Wait -FilePath "C:\Bastionpoint\CWC.exe" -ArgumentList "/S" -PassThru
+
+    }
+
+    '2' {
+
+    #Install Ninja for Brandito Moore St. (Main Office)
+    (New-Object System.Net.WebClient).DownloadFile("https://app.ninjarmm.com/agent/installer/0b890f2a-7513-4bb4-bb35-9ba13c47b658/branditomoorestmainoffice16a074-6.0.1901-windows-installer.msi", "$env:TEMP/AgentInstall.exe");start-process -Wait "$env:TEMP/AgentInstall.msi"
+
+    #Install CWC for Brandito Moore St. (Main Office)
+    wget "https://sc.bastionpoint.com/Bin/ScreenConnect.ClientSetup.exe?e=Access&y=Guest&c=Brandito&c=Moore%20St.%20(Main%20Office)&c=&c=&c=&c=&c=&c=" -OutFile "C:\Bastionpoint\CWC.exe"
+    Start-Process -Wait -FilePath "C:\Bastionpoint\CWC.exe" -ArgumentList "/S" -PassThru
+    
+    }
+
+        '3' {
+
+    #Install Ninja for Brandito Tomlynn St
+    (New-Object System.Net.WebClient).DownloadFile("https://app.ninjarmm.com/agent/installer/0b890f2a-7513-4bb4-bb35-9ba13c47b658/branditotomlynnstc223e0-6.0.1901-windows-installer.msi", "$env:TEMP/AgentInstall.exe");start-process -Wait "$env:TEMP/AgentInstall.msi"
+
+    #Install CWC for Brandito Tomlynn St
+    wget "https://sc.bastionpoint.com/Bin/ScreenConnect.ClientSetup.exe?e=Access&y=Guest&c=Brandito&c=Tomlynn%20St&c=&c=&c=&c=&c=&c=" -OutFile "C:\Bastionpoint\CWC.exe"
+    Start-Process -Wait -FilePath "C:\Bastionpoint\CWC.exe" -ArgumentList "/S" -PassThru
+    
+    }
+
+    default {
+
+    #Install Ninja for Brandito Moore St. (Main Office)
+    (New-Object System.Net.WebClient).DownloadFile("https://app.ninjarmm.com/agent/installer/0b890f2a-7513-4bb4-bb35-9ba13c47b658/branditomoorestmainoffice16a074-6.0.1901-windows-installer.msi", "$env:TEMP/AgentInstall.exe");start-process -Wait "$env:TEMP/AgentInstall.msi"
+
+    #Install CWC for Brandito (empty location)
+    wget "https://sc.bastionpoint.com/Bin/ScreenConnect.ClientSetup.exe?e=Access&y=Guest&c=Brandito&c=&c=&c=&c=&c=&c=&c=" -OutFile "C:\Bastionpoint\CWC.exe"
+    Start-Process -Wait -FilePath "C:\Bastionpoint\CWC.exe" -ArgumentList "/S" -PassThru
+
+    }
+}

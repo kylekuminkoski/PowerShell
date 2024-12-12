@@ -34,7 +34,7 @@ Get-ChildItem "C:\ProgramData\Intuit\QuickBooks 20*\Components\QBUpdateCache" -F
 Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters"  | Select-Object HostName
 
 # Get immutableID to Fix Azure Sync Error
-$guid =(Get-ADUser $ADUser).Objectguid
+$guid = (Get-ADUser $ADUser).Objectguid
 
 $immutableID=[system.convert]::ToBase64String($guid.tobytearray())
 
@@ -73,3 +73,23 @@ robocopy "C:\Users\Administrator\AppData\Local\Packages\Microsoft.Windows.StartM
     </defaultlayout:TaskbarLayout>
  </CustomTaskbarLayoutCollection>
 </LayoutModificationTemplate>
+
+# Export and then restore the Last Logged on user batch script 
+@echo off
+:: Export the registry key
+reg export "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI" C:\LastLoginBackup.reg
+
+:: Pause before restoring (or do your task here)
+pause
+
+:: Restore the registry key
+reg import C:\LastLoginBackup.reg
+
+
+# Unmute computer and play sound 
+(new-object -com wscript.shell).SendKeys([char]173)
+(New-Object Media.SoundPlayer "C:\Windows\Media\Alarm01.wav").PlaySync()
+
+# Detect an IP conflict
+
+arp -a [suspected duplicate IP]

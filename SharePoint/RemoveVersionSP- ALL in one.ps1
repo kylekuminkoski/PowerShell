@@ -8,11 +8,11 @@ if (-not (Get-Module -ListAvailable -Name PnP.PowerShell)) {
 Import-Module PnP.PowerShell
 
 #Config Variables
-$TenantSiteURL = "https://petersprofessionaleducation-admin.sharepoint.com/"
-$VersionsToKeep = 0
+$TenantSiteURL = "https://occasionallymade-admin.sharepoint.com/"
+$VersionsToKeep = 50
 
 #Connect to Tenant Admin Site
-Connect-PnPOnline -Url $TenantSiteURL -Interactive -Clientid "65e90ea9-63b1-4ae9-b564-010d144ace3a"
+Connect-PnPOnline -Url $TenantSiteURL -Interactive -Clientid "98f5e5c4-795d-46a4-9db4-43f25a276b1c"
 
 #Get All Site collections data
 $Sites = Get-PnPTenantSite -Detailed 
@@ -23,7 +23,7 @@ foreach ($Site in $Sites) {
 
     Try {
         #Connect to PnP Online
-        Connect-PnPOnline -Url $SiteURL -Interactive -Clientid "65e90ea9-63b1-4ae9-b564-010d144ace3a"
+        Connect-PnPOnline -Url $SiteURL -Interactive -Clientid "98f5e5c4-795d-46a4-9db4-43f25a276b1c"
 
         #Get the Context
         $Ctx = Get-PnPContext
