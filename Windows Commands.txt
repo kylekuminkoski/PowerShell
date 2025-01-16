@@ -93,3 +93,32 @@ reg import C:\LastLoginBackup.reg
 # Detect an IP conflict
 
 arp -a [suspected duplicate IP]
+
+$group1 = "Group1Name"
+$group2 = "Group2Name"
+
+$membersInGroup1 = Get-ADGroupMember $group1
+$membersInGroup2 = Get-ADGroupMember $group2
+
+if($membersInGroup1 -eq $null)
+{
+    Add-ADGroupMember -Identity $group1 -Members $membersInGroup2
+}
+elseif($membersInGroup2 -ne $null)
+{
+  $separateMembers = diff $membersInGroup1 $membersInGroup2
+
+  if($separateMembers -ne $null)
+  {
+    foreach($member in $separateMembers)
+    {
+      $currentUserToAdd = Get-ADUser -Identity $member.InputObject
+      Add-ADGroupMember -Identity $group1 -Members $currentUserToAdd
+      }
+  }
+}
+
+
+# HP BIOS Config Utility set Auto Power on after power loss for desktops
+
+BiosConfigUtility64.exe /setvalue:"After Power Loss","Power On"

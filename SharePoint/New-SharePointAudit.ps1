@@ -1,3 +1,13 @@
+[CmdletBinding()]
+
+Param(
+    [Parameter (Mandatory = $true)]
+    [String]$TenantName,
+
+    [Parameter (Mandatory = $true)]
+    [String]$ClientId
+)
+
 if (-not (Get-Module -Name PnP.PowerShell)) {
     try {
         Import-Module PnP.PowerShell
@@ -13,9 +23,8 @@ else {
     Write-Host "PnP.PowerShell Module Found" -ForegroundColor Green
 }
 
-$TenantName = "occasionallymade"
 $TenantUrl = "https://" + $TenantName + "-admin.sharepoint.com"
-$ClientId = "98f5e5c4-795d-46a4-9db4-43f25a276b1c"
+
 
 
 

@@ -1,5 +1,5 @@
 # Define Parameters
-$siteUrl = "https://petersprofessionaleducation.sharepoint.com/sites/PetersProfessionalEducation"
+$siteUrl = "<site link here>"
 $libraryName = "Documents"
 $csvFilePath = "C:\Temp\VersionCleanupReport.csv"
 
@@ -7,7 +7,7 @@ $csvFilePath = "C:\Temp\VersionCleanupReport.csv"
 $operationDetails = @()
 
 # Connect to SharePoint Online site
-Connect-PnPOnline -Url $SiteURL -Interactive -Clientid "65e90ea9-63b1-4ae9-b564-010d144ace3a"
+Connect-PnPOnline -Url $SiteURL -Interactive -Clientid "<client id here>"
 
 # Get all files in the document library
 $files = Get-PnPFolder -ListRootFolder $libraryName | Get-PnPFileInFolder -Recurse -ExcludeSystemFolders

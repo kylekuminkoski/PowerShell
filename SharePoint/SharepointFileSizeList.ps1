@@ -1,10 +1,10 @@
 ﻿#Set Variables - app ID: 65e90ea9-63b1-4ae9-b564-010d144ace3a
-$SiteURL = "https://petersprofessionaleducation.sharepoint.com/sites/PetersProfessionalEducation"
+$SiteURL = "<site url here>"
 $LibraryName = "Documents"
-$CSVPath = "C:\Temp\SharepointFileSizeListPeters.csv"
+$CSVPath = "C:\Temp\SharepointFileSizeList.csv"
   
 #Connect to SharePoint Online site
-Connect-PnPOnline -Url $SiteURL -Interactive -Clientid "65e90ea9-63b1-4ae9-b564-010d144ace3a"
+Connect-PnPOnline -Url $SiteURL -Interactive -Clientid "<app id here>"
  
 $VersionHistoryData = @()
 #Iterate through all files

@@ -8,11 +8,11 @@ if (-not (Get-Module -ListAvailable -Name PnP.PowerShell)) {
 Import-Module PnP.PowerShell
 
 #Config Variables
-$TenantSiteURL = "https://occasionallymade-admin.sharepoint.com/"
+$TenantSiteURL = "<site url here>"
 $VersionsToKeep = 50
 
 #Connect to Tenant Admin Site
-Connect-PnPOnline -Url $TenantSiteURL -Interactive -Clientid "98f5e5c4-795d-46a4-9db4-43f25a276b1c"
+Connect-PnPOnline -Url $TenantSiteURL -Interactive -Clientid "<app id here>"
 
 #Get All Site collections data
 $Sites = Get-PnPTenantSite -Detailed 
@@ -23,7 +23,7 @@ foreach ($Site in $Sites) {
 
     Try {
         #Connect to PnP Online
-        Connect-PnPOnline -Url $SiteURL -Interactive -Clientid "98f5e5c4-795d-46a4-9db4-43f25a276b1c"
+        Connect-PnPOnline -Url $SiteURL -Interactive -Clientid "<app id here>"
 
         #Get the Context
         $Ctx = Get-PnPContext
@@ -40,7 +40,7 @@ foreach ($Site in $Sites) {
             Write-host "Processing Document Library:" $Library.Title -f Magenta
 
             #Get All Items from the List - Exclude 'Folder' List Items
-            $ListItems = Get-PnPListItem -List $Library -PageSize 2000 | Where {$_.FileSystemObjectType -eq "File"}
+            $ListItems = Get-PnPListItem -List $Library -PageSize 2000 | Where-Object {$_.FileSystemObjectType -eq "File"}
 
             #Loop through each file
             ForEach ($Item in $ListItems) {
