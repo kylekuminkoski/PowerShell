@@ -7,7 +7,7 @@ $csvFilePath = "C:\Temp\VersionCleanupReport.csv"
 $operationDetails = @()
 
 # Connect to SharePoint Online site
-Connect-PnPOnline -Url $SiteURL -Interactive -Clientid "<client id here>"
+Connect-PnPOnline -Url $SiteURL -Interactive -Clientid "cfc3cdcc-4671-4b1d-ae0d-0aaf4b6d911b"
 
 # Get all files in the document library
 $files = Get-PnPFolder -ListRootFolder $libraryName | Get-PnPFileInFolder -Recurse -ExcludeSystemFolders

@@ -8,8 +8,8 @@ if (-not (Get-Module -ListAvailable -Name PnP.PowerShell)) {
 Import-Module PnP.PowerShell
 
 #Config Variables
-$TenantSiteURL = "<site url here>"
-$VersionsToKeep = 50
+$TenantSiteURL = "joelbieberfirm-admin.sharepoint.com"
+$VersionsToKeep = 20
 
 #Connect to Tenant Admin Site
 Connect-PnPOnline -Url $TenantSiteURL -Interactive -Clientid "<app id here>"
