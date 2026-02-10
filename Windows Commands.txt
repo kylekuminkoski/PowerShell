@@ -1,5 +1,7 @@
 # PowerShell get installed programs
-    Get-WmiObject Win32_Product | select Name,Version
+    Get-WmiObject Win32_Product | select Name,IdentifyingNumber | Sort-Object -Property Name
+
+    msiexec.exe /qn /x ""
 
 # cmd/PowerShell disable autologon
     powershell -c "Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\UserSwitch' Enabled 1"
