@@ -670,13 +670,118 @@ function Unregister-ResumeTask {
 }
 #endregion
 
+#region --- Drain Phase Orchestration ---
+function Invoke-DrainPhase {
+    param(
+        [Parameter(Mandatory)][int]$DrainTimeoutMinutes,
+        [Parameter(Mandatory)][string]$FailbackMode,
+        [switch]$DryRun,
+        [switch]$Force,
+        [switch]$SkipLiveMigrationCheck
+    )
+
+    Initialize-StateDir
+    Initialize-Transcript -PhaseName 'drain'
+    Initialize-EventSource
+    Remove-OldLogs -Directory $script:StateDir -RetentionDays $script:LogRetentionDays
+
+    Write-Log "=== Drain phase starting on $env:COMPUTERNAME ==="
+    Write-Log "Parameters: DrainTimeoutMinutes=$DrainTimeoutMinutes, FailbackMode=$FailbackMode, DryRun=$DryRun, Force=$Force, SkipLiveMigrationCheck=$SkipLiveMigrationCheck"
+
+    try {
+        Invoke-Preflight -Force:$Force -SkipLiveMigrationCheck:$SkipLiveMigrationCheck
+    }
+    catch {
+        Write-Log -Level ERROR "Preflight failed: $_"
+        Write-DrainEvent -EventId 1001 -EntryType Warning -Message "Drain preflight failed: $_"
+        Stop-ScriptTranscript
+        if ($_.Exception.Message -like '*Drain already in progress*') { exit 5 }
+        exit 1
+    }
+
+    if ($DryRun) {
+        Write-Log "DRY RUN: preflight passed; not draining or rebooting. Exiting 0."
+        Stop-ScriptTranscript
+        exit 0
+    }
+
+    $cluster = Get-CurrentClusterContext
+    $now = (Get-Date).ToUniversalTime().ToString('o')
+    $roles = @(Get-CurrentRoleSnapshot)
+
+    # Drain
+    try {
+        Invoke-NodeDrain -TimeoutMinutes $DrainTimeoutMinutes
+        Confirm-DrainComplete
+    }
+    catch {
+        Write-Log -Level ERROR "Drain failed: $_"
+        if ($_.Exception.Message -eq 'DRAIN_TIMEOUT') {
+            Invoke-DrainRollback -Context 'drain-timeout'
+            Write-DrainEvent -EventId 1001 -EntryType Warning -Message "Drain timed out; rolled back."
+            Stop-ScriptTranscript
+            exit 4
+        }
+        Invoke-DrainRollback -Context 'drain-failed'
+        Write-DrainEvent -EventId 1001 -EntryType Warning -Message "Drain failed and rolled back: $_"
+        Stop-ScriptTranscript
+        exit 2
+    }
+
+    $drainCompleted = (Get-Date).ToUniversalTime().ToString('o')
+
+    # Persist state + register task. Wrap in try/catch - any failure here means rollback.
+    try {
+        $scriptPath = $MyInvocation.PSCommandPath
+        $scriptHash = Get-ScriptHash -Path $scriptPath
+
+        $state = New-StateObject `
+            -NodeName $env:COMPUTERNAME `
+            -ClusterName $cluster.Name `
+            -DrainStartedAt $now `
+            -FailbackMode $FailbackMode `
+            -DrainTimeoutMinutes $DrainTimeoutMinutes `
+            -ScriptPath $scriptPath `
+            -ScriptHash $scriptHash `
+            -RolesAtDrainStart $roles
+        $state.drainCompletedAt = $drainCompleted
+
+        Save-StateAtomic -Path $script:StatePath -State $state
+        Write-Log "State persisted to $script:StatePath"
+
+        Register-ResumeTask -ScriptPath $scriptPath
+    }
+    catch {
+        Write-Log -Level ERROR "Failed to persist state or register resume task: $_"
+        Invoke-DrainRollback -Context 'persist-or-schedule-failed'
+        # Clean up partial state
+        if (Test-Path $script:StatePath) { Remove-Item $script:StatePath -Force -ErrorAction SilentlyContinue }
+        if (Test-ResumeTaskExists) { Unregister-ResumeTask }
+        Write-DrainEvent -EventId 1001 -EntryType Warning -Message "Drain rolled back after persist/schedule failure: $_"
+        Stop-ScriptTranscript
+        exit 3
+    }
+
+    Update-StateField -Path $script:StatePath -Field 'rebootRequestedAt' -Value ((Get-Date).ToUniversalTime().ToString('o'))
+    Write-Log "Reboot requested. NinjaOne will lose connection. Resume task registered."
+    Write-DrainEvent -EventId 100 -EntryType Information -Message "Drain succeeded; rebooting $env:COMPUTERNAME. Resume task scheduled."
+
+    Stop-ScriptTranscript
+    Restart-Computer -Force -ErrorAction Stop
+}
+#endregion
+
 #region --- Main ---
 if ($MyInvocation.InvocationName -eq '.') { return }
 
 try {
     if ($Phase -eq 'Drain') {
-        Write-Output 'Drain phase stub. Implementation pending.'
-        exit 0
+        Invoke-DrainPhase `
+            -DrainTimeoutMinutes $DrainTimeoutMinutes `
+            -FailbackMode $FailbackMode `
+            -DryRun:$DryRun `
+            -Force:$Force `
+            -SkipLiveMigrationCheck:$SkipLiveMigrationCheck
     }
     else {
         Write-Output 'Resume phase stub. Implementation pending.'
@@ -685,6 +790,7 @@ try {
 }
 catch {
     Write-Error "Unhandled exception: $_"
+    Stop-ScriptTranscript
     exit 99
 }
 #endregion
