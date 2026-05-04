@@ -82,3 +82,86 @@ Describe 'Logging helpers' {
         Test-Path $newFile | Should -BeTrue
     }
 }
+
+Describe 'State file helpers' {
+    BeforeAll {
+        . $script:ScriptPath -ErrorAction SilentlyContinue *>$null
+    }
+
+    It 'Get-ScriptHash returns a 64-char SHA256 hex string for the script itself' {
+        $h = Get-ScriptHash -Path $script:ScriptPath
+        $h | Should -Match '^[A-F0-9]{64}$'
+    }
+
+    It 'Get-ScriptHash is stable across calls' {
+        $h1 = Get-ScriptHash -Path $script:ScriptPath
+        $h2 = Get-ScriptHash -Path $script:ScriptPath
+        $h1 | Should -Be $h2
+    }
+
+    It 'New-StateObject populates required schema fields' {
+        $obj = New-StateObject -NodeName 'NODE1' -ClusterName 'CL' -DrainStartedAt (Get-Date).ToString('o') -FailbackMode 'Policy' -DrainTimeoutMinutes 60 -ScriptPath 'C:\foo.ps1' -ScriptHash ('A' * 64) -RolesAtDrainStart @()
+        $obj.schemaVersion | Should -Be 1
+        $obj.nodeName | Should -Be 'NODE1'
+        $obj.failbackMode | Should -Be 'Policy'
+        $obj.PSObject.Properties.Name | Should -Contain 'rebootRequestedAt'
+        $obj.PSObject.Properties.Name | Should -Contain 'resumeStartedAt'
+        $obj.PSObject.Properties.Name | Should -Contain 'resumeCompletedAt'
+    }
+
+    It 'Save-StateAtomic + Read-State round-trip preserves data' {
+        $tempDir = Join-Path $TestDrive 'state'
+        New-Item -ItemType Directory -Path $tempDir | Out-Null
+        $statePath = Join-Path $tempDir 'state.json'
+
+        $obj = New-StateObject -NodeName 'NODE1' -ClusterName 'CL' -DrainStartedAt '2026-05-04T14:00:00Z' -FailbackMode 'Policy' -DrainTimeoutMinutes 60 -ScriptPath 'C:\foo.ps1' -ScriptHash ('A' * 64) -RolesAtDrainStart @(@{ name='vm1'; type='VM'; originalOwner='NODE1' })
+
+        Save-StateAtomic -Path $statePath -State $obj
+
+        Test-Path $statePath | Should -BeTrue
+        Test-Path "$statePath.tmp" | Should -BeFalse
+
+        $loaded = Read-State -Path $statePath
+        $loaded.nodeName | Should -Be 'NODE1'
+        $loaded.rolesAtDrainStart[0].name | Should -Be 'vm1'
+    }
+
+    It 'Save-StateAtomic uses temp + rename (no half-written file under failure)' {
+        $tempDir = Join-Path $TestDrive 'state2'
+        New-Item -ItemType Directory -Path $tempDir | Out-Null
+        $statePath = Join-Path $tempDir 'state.json'
+
+        $obj = New-StateObject -NodeName 'NODE1' -ClusterName 'CL' -DrainStartedAt '2026-05-04T14:00:00Z' -FailbackMode 'Policy' -DrainTimeoutMinutes 60 -ScriptPath 'C:\foo.ps1' -ScriptHash ('A' * 64) -RolesAtDrainStart @()
+        Save-StateAtomic -Path $statePath -State $obj
+
+        # Verify final file exists, tmp doesn't
+        (Get-ChildItem $tempDir).Count | Should -Be 1
+        (Get-ChildItem $tempDir).Name | Should -Be 'state.json'
+    }
+
+    It 'Read-State throws on missing file' {
+        { Read-State -Path (Join-Path $TestDrive 'nope.json') } | Should -Throw
+    }
+
+    It 'Read-State throws on invalid JSON' {
+        $tempDir = Join-Path $TestDrive 'state3'
+        New-Item -ItemType Directory -Path $tempDir | Out-Null
+        $statePath = Join-Path $tempDir 'state.json'
+        Set-Content -Path $statePath -Value 'not json'
+        { Read-State -Path $statePath } | Should -Throw
+    }
+
+    It 'Update-StateField persists a single field change' {
+        $tempDir = Join-Path $TestDrive 'state4'
+        New-Item -ItemType Directory -Path $tempDir | Out-Null
+        $statePath = Join-Path $tempDir 'state.json'
+        $obj = New-StateObject -NodeName 'NODE1' -ClusterName 'CL' -DrainStartedAt '2026-05-04T14:00:00Z' -FailbackMode 'Policy' -DrainTimeoutMinutes 60 -ScriptPath 'C:\foo.ps1' -ScriptHash ('A' * 64) -RolesAtDrainStart @()
+        Save-StateAtomic -Path $statePath -State $obj
+
+        Update-StateField -Path $statePath -Field 'rebootRequestedAt' -Value '2026-05-04T14:30:00Z'
+
+        $loaded = Read-State -Path $statePath
+        $loaded.rebootRequestedAt | Should -Be '2026-05-04T14:30:00Z'
+        $loaded.nodeName | Should -Be 'NODE1'  # other fields preserved
+    }
+}

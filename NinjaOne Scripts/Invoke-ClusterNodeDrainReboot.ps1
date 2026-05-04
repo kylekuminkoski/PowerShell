@@ -152,6 +152,94 @@ function Remove-OldLogs {
 }
 #endregion
 
+#region --- Path & State ---
+function Initialize-StateDir {
+    if (-not (Test-Path $script:StateDir)) {
+        New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null
+    }
+}
+
+function Get-ScriptHash {
+    param([Parameter(Mandatory)][string]$Path)
+    (Get-FileHash -Path $Path -Algorithm SHA256).Hash
+}
+
+function New-StateObject {
+    param(
+        [Parameter(Mandatory)][string]$NodeName,
+        [Parameter(Mandatory)][string]$ClusterName,
+        [Parameter(Mandatory)][string]$DrainStartedAt,
+        [Parameter(Mandatory)][string]$FailbackMode,
+        [Parameter(Mandatory)][int]$DrainTimeoutMinutes,
+        [Parameter(Mandatory)][string]$ScriptPath,
+        [Parameter(Mandatory)][string]$ScriptHash,
+        [Parameter(Mandatory)][AllowEmptyCollection()][array]$RolesAtDrainStart
+    )
+    [pscustomobject]@{
+        schemaVersion       = 1
+        nodeName            = $NodeName
+        clusterName         = $ClusterName
+        drainStartedAt      = $DrainStartedAt
+        drainCompletedAt    = $null
+        failbackMode        = $FailbackMode
+        drainTimeoutMinutes = $DrainTimeoutMinutes
+        scriptPath          = $ScriptPath
+        scriptHash          = $ScriptHash
+        rolesAtDrainStart   = $RolesAtDrainStart
+        rebootRequestedAt   = $null
+        resumeStartedAt     = $null
+        resumeCompletedAt   = $null
+    }
+}
+
+function Save-StateAtomic {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)]$State
+    )
+    $tmp = "$Path.tmp"
+    $json = $State | ConvertTo-Json -Depth 10
+    Set-Content -Path $tmp -Value $json -Encoding UTF8 -Force
+    if (Test-Path $Path) { Remove-Item $Path -Force }
+    Rename-Item -Path $tmp -NewName (Split-Path $Path -Leaf) -Force
+}
+
+function Read-State {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path $Path)) { throw "State file not found: $Path" }
+    $raw = Get-Content -Path $Path -Raw -ErrorAction Stop
+    $raw | ConvertFrom-Json -ErrorAction Stop
+}
+
+function Update-StateField {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Field,
+        $Value
+    )
+    $state = Read-State -Path $Path
+    if (-not ($state.PSObject.Properties.Name -contains $Field)) {
+        throw "State schema has no field '$Field'"
+    }
+    $state.$Field = $Value
+    Save-StateAtomic -Path $Path -State $state
+}
+
+function Get-CompleteStatePath {
+    param([Parameter(Mandatory)][string]$DrainStartedAt)
+    $stamp = ([datetime]$DrainStartedAt).ToString('yyyyMMdd-HHmmss')
+    Join-Path $script:StateDir ("state-{0}.complete.json" -f $stamp)
+}
+
+function Move-StateToComplete {
+    param([Parameter(Mandatory)][string]$Path)
+    $state = Read-State -Path $Path
+    $dest = Get-CompleteStatePath -DrainStartedAt $state.drainStartedAt
+    Move-Item -Path $Path -Destination $dest -Force
+    return $dest
+}
+#endregion
+
 #region --- Main ---
 if ($MyInvocation.InvocationName -eq '.') { return }
 
