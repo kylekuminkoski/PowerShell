@@ -82,6 +82,7 @@ param(
     [ValidateSet('Policy','Immediate','NoFailback')]
     [string]$FailbackMode = 'Policy',
 
+    [ValidateRange(1, 60)]
     [int]$ResumeReadyTimeoutMinutes = 5,
 
     [switch]$DryRun,
@@ -100,6 +101,8 @@ $script:EventSource  = 'ClusterDrain'
 $script:EventLogName = 'Application'
 $script:LogRetentionDays = 30
 $script:ResumeTaskBootDelaySeconds = 90
+$script:DrainAlreadyInProgressSentinel = 'DRAIN_ALREADY_IN_PROGRESS'
+$script:DrainTimeoutSentinel           = 'DRAIN_TIMEOUT'
 #endregion
 
 #region --- Logging ---
@@ -307,8 +310,17 @@ function Test-ResumeTaskExists {
         $existing = Get-ScheduledTask -TaskPath $script:TaskFolder -TaskName $script:TaskName -ErrorAction Stop
         return [bool]$existing
     }
+    catch [Microsoft.Management.Infrastructure.CimException] {
+        # ScheduledTasks throws CimException for "task not found" specifically.
+        if ($_.FullyQualifiedErrorId -match 'ObjectNotFound|HRESULT 0x80070002|HRESULT 0x80041002') {
+            return $false
+        }
+        Write-Log -Level WARN "Test-ResumeTaskExists: unexpected CimException, returning true defensively: $_"
+        return $true
+    }
     catch {
-        return $false
+        Write-Log -Level WARN "Test-ResumeTaskExists: unexpected error, returning true defensively: $_"
+        return $true
     }
 }
 
@@ -559,7 +571,7 @@ function Invoke-Preflight {
             Clear-StaleStateAndTask
         }
         else {
-            $msg = "Drain already in progress (state.json exists: $stateExists, resume task exists: $taskExists). Use -Force to clean up and retry."
+            $msg = "$script:DrainAlreadyInProgressSentinel`: state.json exists: $stateExists, resume task exists: $taskExists. Use -Force to clean up and retry."
             throw $msg
         }
     }
@@ -610,7 +622,7 @@ function Invoke-NodeDrain {
         Write-Log -Level ERROR "Drain timed out after $TimeoutMinutes minutes. Killing job."
         Stop-Job -Job $job -ErrorAction SilentlyContinue
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
-        throw "DRAIN_TIMEOUT"
+        throw $script:DrainTimeoutSentinel
     }
 
     if ($job.State -ne 'Completed') {
@@ -728,7 +740,7 @@ function Invoke-DrainPhase {
         Write-Log -Level ERROR "Preflight failed: $_"
         Write-DrainEvent -EventId 1001 -EntryType Warning -Message "Drain preflight failed: $_"
         Stop-ScriptTranscript
-        if ($_.Exception.Message -like '*Drain already in progress*') { exit 5 }
+        if ($_.Exception.Message -like "*$script:DrainAlreadyInProgressSentinel*") { exit 5 }
         exit 1
     }
 
@@ -749,7 +761,7 @@ function Invoke-DrainPhase {
     }
     catch {
         Write-Log -Level ERROR "Drain failed: $_"
-        if ($_.Exception.Message -eq 'DRAIN_TIMEOUT') {
+        if ($_.Exception.Message -eq $script:DrainTimeoutSentinel) {
             Invoke-DrainRollback -Context 'drain-timeout'
             Write-DrainEvent -EventId 1001 -EntryType Warning -Message "Drain timed out; rolled back."
             Stop-ScriptTranscript
@@ -800,7 +812,21 @@ function Invoke-DrainPhase {
     Write-DrainEvent -EventId 100 -EntryType Information -Message "Drain succeeded; rebooting $env:COMPUTERNAME. Resume task scheduled."
 
     Stop-ScriptTranscript
-    Restart-Computer -Force -ErrorAction Stop
+
+    try {
+        Restart-Computer -Force -ErrorAction Stop
+    }
+    catch {
+        # Reopen transcript for rollback log capture
+        Initialize-Transcript -PhaseName 'drain'
+        Write-Log -Level ERROR "Restart-Computer failed: $_. Rolling back drain to leave node recoverable."
+        Invoke-DrainRollback -Context 'restart-computer-failed'
+        if (Test-Path $script:StatePath) { Remove-Item $script:StatePath -Force -ErrorAction SilentlyContinue }
+        if (Test-ResumeTaskExists) { Unregister-ResumeTask }
+        Write-DrainEvent -EventId 1001 -EntryType Warning -Message "Restart-Computer failed; drain rolled back: $_"
+        Stop-ScriptTranscript
+        exit 3
+    }
 }
 #endregion
 
