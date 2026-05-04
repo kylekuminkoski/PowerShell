@@ -805,6 +805,118 @@ function Wait-ClusterReady {
     }
     throw "Timed out waiting for Get-Cluster to respond."
 }
+
+function Invoke-ResumePhase {
+    param([Parameter(Mandatory)][int]$ResumeReadyTimeoutMinutes)
+
+    Initialize-StateDir
+    Initialize-Transcript -PhaseName 'resume'
+    Initialize-EventSource
+
+    Write-Log "=== Resume phase starting on $env:COMPUTERNAME ==="
+
+    # Step 1: cluster ready
+    try {
+        Test-ClusterModuleAvailable
+        Wait-ClusterReady -TimeoutMinutes $ResumeReadyTimeoutMinutes
+    }
+    catch {
+        Write-Log -Level ERROR "Cluster service not ready: $_"
+        Write-DrainEvent -EventId 1010 -EntryType Error -Message "Resume phase: cluster not ready: $_"
+        Stop-ScriptTranscript
+        exit 10
+    }
+
+    # Step 2: validate state
+    $state = $null
+    try {
+        if (-not (Test-Path $script:StatePath)) {
+            throw "State file missing: $script:StatePath"
+        }
+        $state = Read-State -Path $script:StatePath
+
+        if ($state.nodeName -ne $env:COMPUTERNAME) {
+            throw "State file is for node '$($state.nodeName)', not '$env:COMPUTERNAME'."
+        }
+
+        if ($state.scriptPath -and (Test-Path $state.scriptPath)) {
+            $currentHash = Get-ScriptHash -Path $state.scriptPath
+            if ($currentHash -ne $state.scriptHash) {
+                Write-Log -Level WARN "Script hash differs from drain-time hash. Continuing (admin may have legitimately updated the script)."
+            }
+        }
+    }
+    catch {
+        Write-Log -Level ERROR "State validation failed: $_"
+        Write-DrainEvent -EventId 1010 -EntryType Error -Message "Resume phase: invalid state: $_"
+        try { Unregister-ResumeTask } catch { }
+        Stop-ScriptTranscript
+        exit 11
+    }
+
+    # Step 3: confirm node is Paused (or already Up)
+    $node = Get-ThisNode
+    $skipResume = $false
+    if ($node.State -eq 'Up') {
+        Write-Log "Node already Up (someone manually resumed before this task ran). Skipping Resume-ClusterNode."
+        $skipResume = $true
+    }
+    elseif ($node.State -ne 'Paused') {
+        Write-Log -Level ERROR "Node state is '$($node.State)', expected 'Paused' or 'Up'."
+        Write-DrainEvent -EventId 1010 -EntryType Error -Message "Resume phase: unexpected node state '$($node.State)'."
+        Stop-ScriptTranscript
+        exit 13
+    }
+
+    # Step 4: Resume
+    if (-not $skipResume) {
+        Update-StateField -Path $script:StatePath -Field 'resumeStartedAt' -Value ((Get-Date).ToUniversalTime().ToString('o'))
+        try {
+            Resume-ClusterNode -Name $env:COMPUTERNAME -Failback $state.failbackMode -ErrorAction Stop
+            Write-Log "Resume-ClusterNode -Failback $($state.failbackMode) succeeded."
+        }
+        catch {
+            Write-Log -Level ERROR "Resume-ClusterNode failed: $_"
+            Write-DrainEvent -EventId 1010 -EntryType Error -Message "Resume-ClusterNode failed: $_"
+            Stop-ScriptTranscript
+            exit 12
+        }
+
+        # Step 4b: post-resume verification
+        $node = Get-ThisNode
+        if ($node.State -ne 'Up') {
+            Write-Log -Level ERROR "Post-resume verification: node state is '$($node.State)', expected 'Up'."
+            Write-DrainEvent -EventId 1010 -EntryType Error -Message "Post-resume verification failed: node is '$($node.State)'."
+            Stop-ScriptTranscript
+            exit 13
+        }
+        Write-Log "Post-resume verification passed (node is Up)."
+    }
+
+    # Step 5: cleanup
+    Update-StateField -Path $script:StatePath -Field 'resumeCompletedAt' -Value ((Get-Date).ToUniversalTime().ToString('o'))
+    $archived = Move-StateToComplete -Path $script:StatePath
+    Write-Log "Archived state to $archived."
+
+    Unregister-ResumeTask
+
+    # Best-effort: remove the (now-empty) ClusterDrain task folder.
+    try {
+        $svc = New-Object -ComObject 'Schedule.Service'
+        $svc.Connect()
+        $folder = $svc.GetFolder('\')
+        $folder.DeleteFolder('ClusterDrain', 0)
+        Write-Log "Removed empty Task Scheduler folder \ClusterDrain\."
+    }
+    catch {
+        # Folder may have other tasks or already be gone. Not fatal.
+    }
+
+    Write-Log "=== Resume phase complete ==="
+    Write-DrainEvent -EventId 200 -EntryType Information -Message "Resume succeeded on $env:COMPUTERNAME."
+    Stop-ScriptTranscript
+    exit 0
+}
 #endregion
 
 #region --- Main ---
@@ -820,8 +932,7 @@ try {
             -SkipLiveMigrationCheck:$SkipLiveMigrationCheck
     }
     else {
-        Write-Output 'Resume phase stub. Implementation pending.'
-        exit 0
+        Invoke-ResumePhase -ResumeReadyTimeoutMinutes $ResumeReadyTimeoutMinutes
     }
 }
 catch {
