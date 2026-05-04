@@ -771,6 +771,42 @@ function Invoke-DrainPhase {
 }
 #endregion
 
+#region --- Resume Phase Orchestration ---
+function Wait-ClusterReady {
+    param([Parameter(Mandatory)][int]$TimeoutMinutes)
+
+    Write-Log "Waiting for cluster service readiness (timeout: $TimeoutMinutes min)..."
+    $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+
+    # Stage 1: ClusSvc running
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $svc = Get-Service -Name ClusSvc -ErrorAction Stop
+            if ($svc.Status -eq 'Running') { break }
+        }
+        catch { }
+        Start-Sleep -Seconds 10
+    }
+    if ((Get-Date) -ge $deadline) {
+        throw "Timed out waiting for ClusSvc to reach Running."
+    }
+    Write-Log "ClusSvc is Running."
+
+    # Stage 2: Get-Cluster responds
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $null = Get-Cluster -ErrorAction Stop
+            Write-Log "Get-Cluster responsive."
+            return
+        }
+        catch {
+            Start-Sleep -Seconds 10
+        }
+    }
+    throw "Timed out waiting for Get-Cluster to respond."
+}
+#endregion
+
 #region --- Main ---
 if ($MyInvocation.InvocationName -eq '.') { return }
 
