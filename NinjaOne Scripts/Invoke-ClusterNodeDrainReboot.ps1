@@ -628,6 +628,48 @@ function Invoke-DrainRollback {
 }
 #endregion
 
+#region --- Resume Task Registration ---
+function Register-ResumeTask {
+    param([Parameter(Mandatory)][string]$ScriptPath)
+
+    $action = New-ScheduledTaskAction `
+        -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -Argument ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -Phase Resume' -f $ScriptPath)
+
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $trigger.Delay = 'PT{0}S' -f $script:ResumeTaskBootDelaySeconds
+
+    $principal = New-ScheduledTaskPrincipal `
+        -UserId 'SYSTEM' `
+        -LogonType ServiceAccount `
+        -RunLevel Highest
+
+    $settings = New-ScheduledTaskSettingsSet `
+        -StartWhenAvailable `
+        -MultipleInstances IgnoreNew `
+        -ExecutionTimeLimit ([TimeSpan]::Zero) `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries
+
+    $task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Settings $settings
+
+    Register-ScheduledTask `
+        -TaskName $script:TaskName `
+        -TaskPath $script:TaskFolder `
+        -InputObject $task `
+        -Force | Out-Null
+
+    Write-Log "Registered scheduled task '${script:TaskFolder}${script:TaskName}'."
+}
+
+function Unregister-ResumeTask {
+    if (Test-ResumeTaskExists) {
+        Unregister-ScheduledTask -TaskName $script:TaskName -TaskPath $script:TaskFolder -Confirm:$false
+        Write-Log "Unregistered scheduled task '${script:TaskFolder}${script:TaskName}'."
+    }
+}
+#endregion
+
 #region --- Main ---
 if ($MyInvocation.InvocationName -eq '.') { return }
 
