@@ -140,7 +140,7 @@ Describe 'State file helpers' {
     }
 
     It 'Read-State throws on missing file' {
-        { Read-State -Path (Join-Path $TestDrive 'nope.json') } | Should -Throw
+        { Read-State -Path (Join-Path $TestDrive 'nope.json') } | Should -Throw -ExpectedMessage '*State file not found*'
     }
 
     It 'Read-State throws on invalid JSON' {
@@ -148,7 +148,7 @@ Describe 'State file helpers' {
         New-Item -ItemType Directory -Path $tempDir | Out-Null
         $statePath = Join-Path $tempDir 'state.json'
         Set-Content -Path $statePath -Value 'not json'
-        { Read-State -Path $statePath } | Should -Throw
+        { Read-State -Path $statePath } | Should -Throw -ExpectedMessage '*Invalid*'
     }
 
     It 'Update-StateField persists a single field change' {
@@ -163,5 +163,18 @@ Describe 'State file helpers' {
         $loaded = Read-State -Path $statePath
         $loaded.rebootRequestedAt | Should -Be '2026-05-04T14:30:00Z'
         $loaded.nodeName | Should -Be 'NODE1'  # other fields preserved
+    }
+
+    It 'Get-CompleteStatePath preserves UTC time from a Z-suffixed ISO 8601 input' {
+        # Save the script's current StateDir so we can stub it for the test
+        $originalStateDir = $script:StateDir
+        $script:StateDir = $TestDrive
+        try {
+            $result = Get-CompleteStatePath -DrainStartedAt '2026-05-04T14:00:00Z'
+            $result | Should -Match 'state-20260504-140000\.complete\.json$'
+        }
+        finally {
+            $script:StateDir = $originalStateDir
+        }
     }
 }

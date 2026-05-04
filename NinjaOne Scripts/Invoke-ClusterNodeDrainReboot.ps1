@@ -227,7 +227,12 @@ function Update-StateField {
 
 function Get-CompleteStatePath {
     param([Parameter(Mandatory)][string]$DrainStartedAt)
-    $stamp = ([datetime]$DrainStartedAt).ToString('yyyyMMdd-HHmmss')
+    $dt = [datetime]::Parse(
+        $DrainStartedAt,
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::RoundtripKind
+    )
+    $stamp = $dt.ToUniversalTime().ToString('yyyyMMdd-HHmmss')
     Join-Path $script:StateDir ("state-{0}.complete.json" -f $stamp)
 }
 
