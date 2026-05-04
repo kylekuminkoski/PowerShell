@@ -273,6 +273,38 @@ function Write-DrainEvent {
 }
 #endregion
 
+#region --- Idempotency ---
+function Test-StateFileExists {
+    param([Parameter(Mandatory)][string]$Path)
+    Test-Path -Path $Path -PathType Leaf
+}
+
+function Test-ResumeTaskExists {
+    try {
+        $existing = Get-ScheduledTask -TaskPath $script:TaskFolder -TaskName $script:TaskName -ErrorAction Stop
+        return [bool]$existing
+    }
+    catch {
+        return $false
+    }
+}
+
+function Clear-StaleStateAndTask {
+    Write-Log -Level WARN "Force mode: clearing any stale state and existing scheduled task."
+
+    if (Test-Path $script:StatePath) {
+        $archive = Join-Path $script:StateDir ("state-stale-{0}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+        Move-Item -Path $script:StatePath -Destination $archive -Force
+        Write-Log "Archived stale state.json to $archive"
+    }
+
+    if (Test-ResumeTaskExists) {
+        Unregister-ScheduledTask -TaskName $script:TaskName -TaskPath $script:TaskFolder -Confirm:$false
+        Write-Log "Removed stale scheduled task ${script:TaskFolder}${script:TaskName}"
+    }
+}
+#endregion
+
 #region --- Main ---
 if ($MyInvocation.InvocationName -eq '.') { return }
 

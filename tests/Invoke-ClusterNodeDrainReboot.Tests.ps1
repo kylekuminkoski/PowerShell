@@ -178,3 +178,21 @@ Describe 'State file helpers' {
         }
     }
 }
+
+Describe 'Idempotency helpers' {
+    BeforeAll {
+        . $script:ScriptPath -ErrorAction SilentlyContinue *>$null
+    }
+
+    It 'Test-StateFileExists returns true when file exists' {
+        $tempDir = Join-Path $TestDrive 'idem1'
+        New-Item -ItemType Directory -Path $tempDir | Out-Null
+        $p = Join-Path $tempDir 'state.json'
+        Set-Content -Path $p -Value '{}'
+        Test-StateFileExists -Path $p | Should -BeTrue
+    }
+
+    It 'Test-StateFileExists returns false when file missing' {
+        Test-StateFileExists -Path (Join-Path $TestDrive 'nope.json') | Should -BeFalse
+    }
+}
