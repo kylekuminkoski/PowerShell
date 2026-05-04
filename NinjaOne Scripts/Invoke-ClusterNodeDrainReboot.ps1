@@ -511,7 +511,12 @@ function Assert-VMsLiveMigrationEligible {
         }
 
         try {
-            $report = Compare-VM -VM $vm -DestinationHost $target.Name -ErrorAction Stop
+            # -IncludeStorage:$false forces resolution to the VMSingleDestination parameter
+            # set (shared-storage / CSV migration). Without it, the call is ambiguous between
+            # VMSingleDestination and VMMultipleDestinations on Server 2025 and raises
+            # "Parameter set cannot be resolved." For COLONODE's CSV layout, storage does
+            # not move during LM, so this is also the correct semantics.
+            $report = Compare-VM -VM $vm -DestinationHost $target.Name -IncludeStorage:$false -ErrorAction Stop
             $firstVm = $false
         }
         catch {
