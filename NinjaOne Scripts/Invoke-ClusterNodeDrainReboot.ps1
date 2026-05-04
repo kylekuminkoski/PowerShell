@@ -245,6 +245,34 @@ function Move-StateToComplete {
 }
 #endregion
 
+#region --- Event Log ---
+function Initialize-EventSource {
+    try {
+        if (-not [System.Diagnostics.EventLog]::SourceExists($script:EventSource)) {
+            New-EventLog -LogName $script:EventLogName -Source $script:EventSource -ErrorAction Stop
+            Write-Log "Created Event Log source '$script:EventSource' under '$script:EventLogName'"
+        }
+    }
+    catch {
+        Write-Log -Level WARN "Could not initialize Event Log source: $_"
+    }
+}
+
+function Write-DrainEvent {
+    param(
+        [Parameter(Mandatory)][int]$EventId,
+        [Parameter(Mandatory)][ValidateSet('Information','Warning','Error')][string]$EntryType,
+        [Parameter(Mandatory)][string]$Message
+    )
+    try {
+        Write-EventLog -LogName $script:EventLogName -Source $script:EventSource -EventId $EventId -EntryType $EntryType -Message $Message -ErrorAction Stop
+    }
+    catch {
+        Write-Log -Level WARN "Could not write Event Log entry ($EventId / $EntryType): $_"
+    }
+}
+#endregion
+
 #region --- Main ---
 if ($MyInvocation.InvocationName -eq '.') { return }
 
