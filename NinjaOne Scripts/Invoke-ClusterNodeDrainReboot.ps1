@@ -549,6 +549,85 @@ function Invoke-Preflight {
 }
 #endregion
 
+#region --- Drain ---
+function Get-CurrentRoleSnapshot {
+    Get-ClusterGroup |
+        Where-Object { $_.OwnerNode.Name -eq $env:COMPUTERNAME } |
+        ForEach-Object {
+            [pscustomobject]@{
+                name          = $_.Name
+                type          = $_.GroupType.ToString()
+                originalOwner = $_.OwnerNode.Name
+            }
+        }
+}
+
+function Invoke-NodeDrain {
+    param([Parameter(Mandatory)][int]$TimeoutMinutes)
+
+    Write-Log ("Calling Suspend-ClusterNode -Drain (timeout {0} min)..." -f $TimeoutMinutes)
+
+    $job = Start-Job -ScriptBlock {
+        param($NodeName)
+        Import-Module FailoverClusters -ErrorAction Stop
+        Suspend-ClusterNode -Name $NodeName -Drain -Wait -ErrorAction Stop
+    } -ArgumentList $env:COMPUTERNAME
+
+    $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+    while ($job.State -eq 'Running' -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 10
+    }
+
+    if ($job.State -eq 'Running') {
+        Write-Log -Level ERROR "Drain timed out after $TimeoutMinutes minutes. Killing job."
+        Stop-Job -Job $job -ErrorAction SilentlyContinue
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+        throw "DRAIN_TIMEOUT"
+    }
+
+    if ($job.State -ne 'Completed') {
+        $reason = $job.ChildJobs[0].JobStateInfo.Reason
+        if (-not $reason) { $reason = ($job | Receive-Job -Keep -ErrorAction SilentlyContinue 2>&1) }
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+        throw "Suspend-ClusterNode failed: $reason"
+    }
+
+    # Surface job output to log
+    $output = Receive-Job -Job $job -ErrorAction SilentlyContinue
+    if ($output) { $output | ForEach-Object { Write-Log "  drain-output: $_" } }
+    Remove-Job -Job $job -ErrorAction SilentlyContinue
+
+    Write-Log "Suspend-ClusterNode -Drain completed."
+}
+
+function Confirm-DrainComplete {
+    $node = Get-ThisNode
+    if ($node.State -ne 'Paused') {
+        throw "Post-drain verification: node state is '$($node.State)', expected 'Paused'."
+    }
+
+    $stillOwned = Get-ClusterGroup | Where-Object { $_.OwnerNode.Name -eq $env:COMPUTERNAME }
+    if ($stillOwned) {
+        $names = ($stillOwned | ForEach-Object Name) -join ', '
+        throw "Post-drain verification: this node still owns roles: $names"
+    }
+
+    Write-Log "Post-drain verification passed (state=Paused, owns 0 roles)."
+}
+
+function Invoke-DrainRollback {
+    param([string]$Context = 'unspecified')
+    Write-Log -Level WARN "Attempting drain rollback (context: $Context)..."
+    try {
+        Resume-ClusterNode -Name $env:COMPUTERNAME -Failback NoFailback -ErrorAction Stop
+        Write-Log "Rollback Resume-ClusterNode succeeded."
+    }
+    catch {
+        Write-Log -Level ERROR "Rollback Resume-ClusterNode failed: $_. MANUAL INTERVENTION REQUIRED - node is left Paused."
+    }
+}
+#endregion
+
 #region --- Main ---
 if ($MyInvocation.InvocationName -eq '.') { return }
 
