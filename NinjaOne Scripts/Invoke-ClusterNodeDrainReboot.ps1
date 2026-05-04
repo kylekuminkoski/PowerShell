@@ -361,6 +361,70 @@ function Get-PrimaryDrainTarget {
 }
 #endregion
 
+#region --- Preflight ---
+function Test-IsElevated {
+    $current = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($current)
+    $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Assert-Elevated {
+    if (-not (Test-IsElevated)) {
+        throw "Script must run elevated (NinjaOne pushes as SYSTEM, which is elevated)."
+    }
+}
+
+function Assert-ThisNodeIsUp {
+    $node = Get-ThisNode
+    if ($node.State -ne 'Up') {
+        throw "This node ($env:COMPUTERNAME) is in state '$($node.State)', not 'Up'. Cannot drain."
+    }
+}
+
+function Assert-OtherNodesAvailable {
+    $up = Get-OtherNodes | Where-Object State -eq 'Up'
+    if (-not $up) {
+        throw "No other cluster nodes are 'Up'. Draining this node would have no failover target."
+    }
+}
+
+function Assert-NoOtherNodePaused {
+    $paused = Get-OtherNodes | Where-Object State -eq 'Paused'
+    if ($paused) {
+        $names = ($paused | ForEach-Object Name) -join ', '
+        throw "Other cluster nodes are already Paused: $names. Refusing to drain - would stack VMs onto too few nodes."
+    }
+}
+
+function Assert-CSVsHealthy {
+    $csvs = Get-ClusterSharedVolume -ErrorAction SilentlyContinue
+    if (-not $csvs) {
+        Write-Log -Level INFO "No Cluster Shared Volumes present (cluster may use SOFS or other storage)."
+        return
+    }
+    foreach ($csv in $csvs) {
+        if ($csv.State -ne 'Online') {
+            throw "Cluster Shared Volume '$($csv.Name)' is in state '$($csv.State)', not 'Online'."
+        }
+        # SharedVolumeInfo[0].FaultState != NoFaults -> redirected access or fault
+        $info = $csv.SharedVolumeInfo
+        foreach ($svi in $info) {
+            if ($svi.FaultState -ne 'NoFaults') {
+                throw "Cluster Shared Volume '$($csv.Name)' has fault state '$($svi.FaultState)' (likely redirected access)."
+            }
+        }
+    }
+}
+
+function Assert-NoFailedRoles {
+    $bad = Get-ClusterGroup | Where-Object { $_.State -in @('Failed','Pending','PartialOnline') }
+    if ($bad) {
+        $names = ($bad | ForEach-Object { "$($_.Name) [$($_.State)]" }) -join ', '
+        throw "Cluster groups in unhealthy state: $names. Refusing to drain."
+    }
+}
+#endregion
+
 #region --- Main ---
 if ($MyInvocation.InvocationName -eq '.') { return }
 
