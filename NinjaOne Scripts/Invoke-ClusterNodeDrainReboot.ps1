@@ -305,6 +305,62 @@ function Clear-StaleStateAndTask {
 }
 #endregion
 
+#region --- Cluster Context ---
+function Test-ClusterModuleAvailable {
+    if (-not (Get-Module -ListAvailable -Name FailoverClusters)) {
+        throw "FailoverClusters PowerShell module is not installed on this host."
+    }
+    Import-Module FailoverClusters -ErrorAction Stop
+}
+
+function Get-CurrentClusterContext {
+    try {
+        $cluster = Get-Cluster -ErrorAction Stop
+    }
+    catch {
+        throw "Get-Cluster failed: $_. This host is not part of an active cluster, or the cluster service is not responsive."
+    }
+    return $cluster
+}
+
+function Get-ThisNode {
+    Get-ClusterNode -Name $env:COMPUTERNAME -ErrorAction Stop
+}
+
+function Get-OtherNodes {
+    Get-ClusterNode -ErrorAction Stop | Where-Object { $_.Name -ne $env:COMPUTERNAME }
+}
+
+function Get-PrimaryDrainTarget {
+    # For a 2-node cluster: the other node. For 3+ nodes: the Up node with the most free memory
+    # (rough heuristic; cluster service makes the actual decision at drain time, but Compare-VM
+    # needs a concrete destination).
+    $candidates = Get-OtherNodes | Where-Object State -eq 'Up'
+    if (-not $candidates) {
+        throw "No other Up cluster nodes found. Cannot drain - this is the only available node."
+    }
+    if ($candidates.Count -eq 1) { return $candidates[0] }
+
+    # 3+ node case: pick the node with the most free memory.
+    $best = $null
+    $bestFree = -1
+    foreach ($n in $candidates) {
+        try {
+            $hv = Get-VMHost -ComputerName $n.Name -ErrorAction Stop
+            if ($hv.MemoryAvailableMB -gt $bestFree) {
+                $bestFree = $hv.MemoryAvailableMB
+                $best = $n
+            }
+        }
+        catch {
+            Write-Log -Level WARN "Could not query VMHost on $($n.Name): $_"
+        }
+    }
+    if (-not $best) { return $candidates[0] }  # fallback
+    return $best
+}
+#endregion
+
 #region --- Main ---
 if ($MyInvocation.InvocationName -eq '.') { return }
 
