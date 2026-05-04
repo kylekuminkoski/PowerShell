@@ -124,7 +124,12 @@ function Write-Log {
     )
     $line = Format-LogLine -Level $Level -Message $Message
     Write-Output $line
-    if ($Level -eq 'ERROR') { Write-Error $Message -ErrorAction Continue }
+    if ($Level -eq 'ERROR') {
+        # Mirror to stderr without PowerShell's ErrorRecord decoration so the
+        # output stays readable in high-volume failure scenarios (e.g., per-VM
+        # preflight errors). NinjaOne still captures stderr for alerting.
+        [Console]::Error.WriteLine($line)
+    }
     elseif ($Level -eq 'WARN') { Write-Warning $Message }
 }
 
@@ -497,6 +502,7 @@ function Assert-VMsLiveMigrationEligible {
     Write-Log ("Testing Live Migration eligibility of {0} VM(s) against target node '{1}'..." -f $vmGroups.Count, $target.Name)
 
     $blockers = @()
+    $firstVm = $true
     foreach ($g in $vmGroups) {
         $vm = Get-VM -Name $g.Name -ErrorAction SilentlyContinue
         if (-not $vm) {
@@ -506,13 +512,28 @@ function Assert-VMsLiveMigrationEligible {
 
         try {
             $report = Compare-VM -VM $vm -DestinationHost $target.Name -ErrorAction Stop
+            $firstVm = $false
         }
         catch {
+            # Detect cmdlet-usage errors (parameter binding, missing module, etc.) on the
+            # FIRST VM. If Compare-VM doesn't work at all, every VM will fail identically;
+            # better to abort the whole loop with one actionable message than spam the log.
+            $errId = $_.FullyQualifiedErrorId
+            $errMsg = $_.Exception.Message
+            $isCmdletUsage = $errId -match 'ParameterBindingException|AmbiguousParameterSet|NamedParameterNotFound|ParameterArgumentValidationError' `
+                            -or $errMsg -match 'Parameter set cannot be resolved'
+            if ($firstVm -and $isCmdletUsage) {
+                throw ("Compare-VM cmdlet failed for the first VM with what looks like a script-level invocation issue (not a per-VM problem): {0}. " +
+                       "This typically means Compare-VM's parameter sets on this OS build don't match the script's call signature. " +
+                       "To proceed, re-run with -SkipLiveMigrationCheck. The post-drain verification will still catch any non-LM transport. " +
+                       "Please report this so the call signature can be fixed.") -f $errMsg
+            }
             $blockers += [pscustomobject]@{
                 VM = $g.Name
                 Reason = "Compare-VM raised: $_"
                 MessageId = $null
             }
+            $firstVm = $false
             continue
         }
 
