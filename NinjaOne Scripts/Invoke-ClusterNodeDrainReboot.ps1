@@ -96,7 +96,65 @@ $script:LogRetentionDays = 30
 $script:ResumeTaskBootDelaySeconds = 90
 #endregion
 
+#region --- Logging ---
+$script:LogPath = $null  # Set by Initialize-Transcript
+
+function Format-LogLine {
+    param(
+        [Parameter(Mandatory)][ValidateSet('INFO','WARN','ERROR')][string]$Level,
+        [Parameter(Mandatory)][string]$Message
+    )
+    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    "[{0}] [{1}] {2}" -f $ts, $Level, $Message
+}
+
+function Write-Log {
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
+    )
+    $line = Format-LogLine -Level $Level -Message $Message
+    Write-Output $line
+    if ($Level -eq 'ERROR') { Write-Error $Message -ErrorAction Continue }
+    elseif ($Level -eq 'WARN') { Write-Warning $Message }
+}
+
+function Get-LogPath {
+    param([Parameter(Mandatory)][ValidateSet('drain','resume')][string]$PhaseName)
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    Join-Path $script:StateDir ("{0}-{1}.log" -f $PhaseName, $stamp)
+}
+
+function Initialize-Transcript {
+    param([Parameter(Mandatory)][ValidateSet('drain','resume')][string]$PhaseName)
+    if (-not (Test-Path $script:StateDir)) {
+        New-Item -ItemType Directory -Path $script:StateDir -Force | Out-Null
+    }
+    $script:LogPath = Get-LogPath -PhaseName $PhaseName
+    Start-Transcript -Path $script:LogPath -Append | Out-Null
+    Write-Log "Transcript started at $script:LogPath"
+}
+
+function Stop-ScriptTranscript {
+    try { Stop-Transcript | Out-Null } catch { }
+}
+
+function Remove-OldLogs {
+    param(
+        [Parameter(Mandatory)][string]$Directory,
+        [Parameter(Mandatory)][int]$RetentionDays
+    )
+    if (-not (Test-Path $Directory)) { return }
+    $cutoff = (Get-Date).AddDays(-$RetentionDays)
+    Get-ChildItem -Path $Directory -Filter '*.log' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -lt $cutoff } |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+}
+#endregion
+
 #region --- Main ---
+if ($MyInvocation.InvocationName -eq '.') { return }
+
 try {
     if ($Phase -eq 'Drain') {
         Write-Output 'Drain phase stub. Implementation pending.'
