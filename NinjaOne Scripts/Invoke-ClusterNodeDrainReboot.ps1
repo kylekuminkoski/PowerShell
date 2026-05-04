@@ -65,6 +65,12 @@ Exit codes:
   99 Unhandled exception
 #>
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Remove-OldLogs', Justification = 'Singular form less natural for collection operation; helper is script-internal')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Get-OtherNodes', Justification = 'Returns multiple nodes by definition; helper is script-internal')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Assert-NoFailedRoles', Justification = 'Predicate over a collection; helper is script-internal')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Get-BlockingIncompatibilities', Justification = 'Returns multiple incompatibilities; helper is script-internal')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Test-ResumeTaskExists', Justification = 'Predicate-style name; helper is script-internal')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Test-StateFileExists', Justification = 'Predicate-style name; helper is script-internal')]
 [CmdletBinding()]
 param(
     [ValidateSet('Drain','Resume')]
@@ -136,10 +142,19 @@ function Initialize-Transcript {
 }
 
 function Stop-ScriptTranscript {
-    try { Stop-Transcript | Out-Null } catch { }
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Script-internal helper; -DryRun gate is at orchestrator level')]
+    [CmdletBinding()]
+    param()
+    try { Stop-Transcript | Out-Null }
+    catch {
+        # No transcript was running; nothing to stop. Intentional no-op.
+        Write-Verbose "Stop-ScriptTranscript: no transcript was running ($_)."
+    }
 }
 
 function Remove-OldLogs {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Script-internal helper; -DryRun gate is at orchestrator level')]
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Directory,
         [Parameter(Mandatory)][int]$RetentionDays
@@ -165,6 +180,8 @@ function Get-ScriptHash {
 }
 
 function New-StateObject {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Script-internal helper; -DryRun gate is at orchestrator level')]
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$NodeName,
         [Parameter(Mandatory)][string]$ClusterName,
@@ -193,6 +210,8 @@ function New-StateObject {
 }
 
 function Save-StateAtomic {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Script-internal helper; -DryRun gate is at orchestrator level')]
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)]$State
@@ -212,6 +231,8 @@ function Read-State {
 }
 
 function Update-StateField {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Script-internal helper; -DryRun gate is at orchestrator level')]
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][string]$Field,
@@ -237,6 +258,8 @@ function Get-CompleteStatePath {
 }
 
 function Move-StateToComplete {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Script-internal helper; -DryRun gate is at orchestrator level')]
+    [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path)
     $state = Read-State -Path $Path
     $dest = Get-CompleteStatePath -DrainStartedAt $state.drainStartedAt
@@ -290,6 +313,9 @@ function Test-ResumeTaskExists {
 }
 
 function Clear-StaleStateAndTask {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Script-internal helper; -DryRun gate is at orchestrator level')]
+    [CmdletBinding()]
+    param()
     Write-Log -Level WARN "Force mode: clearing any stale state and existing scheduled task."
 
     if (Test-Path $script:StatePath) {
@@ -563,6 +589,8 @@ function Get-CurrentRoleSnapshot {
 }
 
 function Invoke-NodeDrain {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseUsingScopeModifierInNewRunspaces', '', Justification = '$NodeName is bound via param() + -ArgumentList; using-scope is unnecessary and would error')]
+    [CmdletBinding()]
     param([Parameter(Mandatory)][int]$TimeoutMinutes)
 
     Write-Log ("Calling Suspend-ClusterNode -Drain (timeout {0} min)..." -f $TimeoutMinutes)
@@ -630,6 +658,8 @@ function Invoke-DrainRollback {
 
 #region --- Resume Task Registration ---
 function Register-ResumeTask {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Script-internal helper; -DryRun gate is at orchestrator level')]
+    [CmdletBinding()]
     param([Parameter(Mandatory)][string]$ScriptPath)
 
     $action = New-ScheduledTaskAction `
@@ -663,6 +693,9 @@ function Register-ResumeTask {
 }
 
 function Unregister-ResumeTask {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Script-internal helper; -DryRun gate is at orchestrator level')]
+    [CmdletBinding()]
+    param()
     if (Test-ResumeTaskExists) {
         Unregister-ScheduledTask -TaskName $script:TaskName -TaskPath $script:TaskFolder -Confirm:$false
         Write-Log "Unregistered scheduled task '${script:TaskFolder}${script:TaskName}'."
@@ -784,7 +817,10 @@ function Wait-ClusterReady {
             $svc = Get-Service -Name ClusSvc -ErrorAction Stop
             if ($svc.Status -eq 'Running') { break }
         }
-        catch { }
+        catch {
+            # Service may not exist yet during early boot. Retry on next poll iteration.
+            Write-Verbose "Wait-ClusterReady: ClusSvc not yet queryable ($_); will retry."
+        }
         Start-Sleep -Seconds 10
     }
     if ((Get-Date) -ge $deadline) {
@@ -849,7 +885,10 @@ function Invoke-ResumePhase {
     catch {
         Write-Log -Level ERROR "State validation failed: $_"
         Write-DrainEvent -EventId 1010 -EntryType Error -Message "Resume phase: invalid state: $_"
-        try { Unregister-ResumeTask } catch { }
+        try { Unregister-ResumeTask }
+        catch {
+            Write-Log -Level WARN "Could not unregister resume task during state-invalid cleanup: $_"
+        }
         Stop-ScriptTranscript
         exit 11
     }
@@ -909,7 +948,8 @@ function Invoke-ResumePhase {
         Write-Log "Removed empty Task Scheduler folder \ClusterDrain\."
     }
     catch {
-        # Folder may have other tasks or already be gone. Not fatal.
+        # Folder may have other tasks or already be gone. Best-effort cleanup; not fatal.
+        Write-Verbose "Could not delete \ClusterDrain task folder ($_); not fatal."
     }
 
     Write-Log "=== Resume phase complete ==="
