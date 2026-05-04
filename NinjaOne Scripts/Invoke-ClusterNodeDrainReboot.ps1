@@ -423,6 +423,76 @@ function Assert-NoFailedRoles {
         throw "Cluster groups in unhealthy state: $names. Refusing to drain."
     }
 }
+
+$script:BlockingLMMessageIds = @(33000, 33002, 33012, 40010, 40011, 40012, 81005)
+
+function Get-BlockingIncompatibilities {
+    param([Parameter(Mandatory)]$CompatibilityReport)
+    if (-not $CompatibilityReport.Incompatibilities) { return @() }
+    @($CompatibilityReport.Incompatibilities | Where-Object {
+        $script:BlockingLMMessageIds -contains $_.MessageId
+    })
+}
+
+function Assert-VMsLiveMigrationEligible {
+    param([switch]$SkipCheck)
+
+    if ($SkipCheck) {
+        Write-Log -Level WARN "SkipLiveMigrationCheck set; bypassing VM Live Migration eligibility preflight."
+        return
+    }
+
+    $vmGroups = Get-ClusterGroup |
+        Where-Object { $_.GroupType -eq 'VirtualMachine' -and $_.OwnerNode.Name -eq $env:COMPUTERNAME }
+
+    if (-not $vmGroups) {
+        Write-Log "No Hyper-V VMs currently owned by $env:COMPUTERNAME. Live Migration check trivially passes."
+        return
+    }
+
+    $target = Get-PrimaryDrainTarget
+    Write-Log ("Testing Live Migration eligibility of {0} VM(s) against target node '{1}'..." -f $vmGroups.Count, $target.Name)
+
+    $blockers = @()
+    foreach ($g in $vmGroups) {
+        $vm = Get-VM -Name $g.Name -ErrorAction SilentlyContinue
+        if (-not $vm) {
+            Write-Log -Level WARN "Could not Get-VM for cluster group '$($g.Name)'; skipping LM check for it."
+            continue
+        }
+
+        try {
+            $report = Compare-VM -VM $vm -DestinationHost $target.Name -ErrorAction Stop
+        }
+        catch {
+            $blockers += [pscustomobject]@{
+                VM = $g.Name
+                Reason = "Compare-VM raised: $_"
+                MessageId = $null
+            }
+            continue
+        }
+
+        $bad = Get-BlockingIncompatibilities -CompatibilityReport $report
+        foreach ($inc in $bad) {
+            $blockers += [pscustomobject]@{
+                VM = $g.Name
+                Reason = $inc.Message
+                MessageId = $inc.MessageId
+            }
+        }
+    }
+
+    if ($blockers) {
+        Write-Log -Level ERROR "Live Migration preflight failed. The following VMs would force a non-LM transport:"
+        foreach ($b in $blockers) {
+            Write-Log -Level ERROR ("  - {0}: [{1}] {2}" -f $b.VM, $b.MessageId, $b.Reason)
+        }
+        throw "Live Migration eligibility check failed for $($blockers.Count) issue(s)."
+    }
+
+    Write-Log "All VMs cleared Live Migration preflight."
+}
 #endregion
 
 #region --- Main ---
