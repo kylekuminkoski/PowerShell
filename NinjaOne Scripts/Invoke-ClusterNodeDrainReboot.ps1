@@ -510,6 +510,43 @@ function Assert-VMsLiveMigrationEligible {
 
     Write-Log "All VMs cleared Live Migration preflight."
 }
+
+function Invoke-Preflight {
+    param(
+        [switch]$Force,
+        [switch]$SkipLiveMigrationCheck
+    )
+
+    Write-Log "Starting preflight checks..."
+
+    Assert-Elevated
+
+    Test-ClusterModuleAvailable
+    $cluster = Get-CurrentClusterContext
+    Write-Log "Cluster context: $($cluster.Name)"
+
+    # Idempotency checks (bypassable with -Force)
+    $stateExists = Test-StateFileExists -Path $script:StatePath
+    $taskExists = Test-ResumeTaskExists
+    if ($stateExists -or $taskExists) {
+        if ($Force) {
+            Clear-StaleStateAndTask
+        }
+        else {
+            $msg = "Drain already in progress (state.json exists: $stateExists, resume task exists: $taskExists). Use -Force to clean up and retry."
+            throw $msg
+        }
+    }
+
+    Assert-ThisNodeIsUp
+    Assert-OtherNodesAvailable
+    Assert-NoOtherNodePaused
+    Assert-CSVsHealthy
+    Assert-NoFailedRoles
+    Assert-VMsLiveMigrationEligible -SkipCheck:$SkipLiveMigrationCheck
+
+    Write-Log "All preflight checks passed."
+}
 #endregion
 
 #region --- Main ---
