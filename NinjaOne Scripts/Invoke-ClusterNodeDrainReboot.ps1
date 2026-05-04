@@ -306,22 +306,20 @@ function Test-StateFileExists {
 }
 
 function Test-ResumeTaskExists {
-    try {
-        $existing = Get-ScheduledTask -TaskPath $script:TaskFolder -TaskName $script:TaskName -ErrorAction Stop
-        return [bool]$existing
-    }
-    catch [Microsoft.Management.Infrastructure.CimException] {
-        # ScheduledTasks throws CimException for "task not found" specifically.
-        if ($_.FullyQualifiedErrorId -match 'ObjectNotFound|HRESULT 0x80070002|HRESULT 0x80041002') {
-            return $false
-        }
-        Write-Log -Level WARN "Test-ResumeTaskExists: unexpected CimException, returning true defensively: $_"
-        return $true
-    }
-    catch {
-        Write-Log -Level WARN "Test-ResumeTaskExists: unexpected error, returning true defensively: $_"
-        return $true
-    }
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    # Enumerate all tasks and filter in-process. Avoids the CIM "not found" exception
+    # path entirely (Server 2025 raises a CimException whose FQEID does NOT match
+    # "ObjectNotFound" patterns when a single task lookup misses), and avoids any
+    # Write-Log calls that would pollute the function's success-stream return.
+    # If the Task Scheduler service is genuinely broken, -ErrorAction SilentlyContinue
+    # yields $null and we return $false; on a 2-node cluster this is the safer fallback
+    # since drain wouldn't work anyway.
+    $task = Get-ScheduledTask -ErrorAction SilentlyContinue |
+        Where-Object { $_.TaskPath -eq $script:TaskFolder -and $_.TaskName -eq $script:TaskName }
+    return [bool]$task
 }
 
 function Clear-StaleStateAndTask {
