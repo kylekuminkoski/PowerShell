@@ -424,6 +424,13 @@ function Assert-NoFailedRoles {
     }
 }
 
+# Live Migration "blocking" MessageIds that force a non-LM transport at drain time.
+# This list is best-effort, not exhaustive: there is no single Microsoft authoritative
+# reference. Other IDs (shielded/TPM, GPU partition variants, version mismatches) may
+# surface on real clusters and would silently slip through this filter. The Task 16
+# live dry-run on COLONODE1 is intended to surface any such IDs in real-world output;
+# extend this list when new blocking IDs are observed. Non-blocking incompatibilities
+# are also logged at INFO level inside Assert-VMsLiveMigrationEligible for forensics.
 $script:BlockingLMMessageIds = @(33000, 33002, 33012, 40010, 40011, 40012, 81005)
 
 function Get-BlockingIncompatibilities {
@@ -471,6 +478,16 @@ function Assert-VMsLiveMigrationEligible {
                 MessageId = $null
             }
             continue
+        }
+
+        # Forensic log: emit every incompatibility (blocking and non-blocking) at INFO so
+        # ops have a record if the blocking-ID filter misses something the cluster
+        # treats as a blocker at drain time.
+        if ($report.Incompatibilities) {
+            foreach ($inc in $report.Incompatibilities) {
+                $isBlocking = $script:BlockingLMMessageIds -contains $inc.MessageId
+                Write-Log ("VM '{0}' Compare-VM incompatibility [{1}] (blocking={2}): {3}" -f $g.Name, $inc.MessageId, $isBlocking, $inc.Message)
+            }
         }
 
         $bad = Get-BlockingIncompatibilities -CompatibilityReport $report
