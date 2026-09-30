@@ -26,7 +26,17 @@ C:\ProgramData\Debloat\Debloat.log
   files of the Capture and Deployment task sequences. Without this, 
   any changes made to the user will not persist through and you will 
   only be left with changes made to HKLM.
+
+.PARAMETER Restart
+  When specified, the machine is rebooted at the end of the run. Reboot is
+  opt-in so the script is safe to run in automated/image-build/RMM contexts
+  where there is no interactive user to answer a confirmation prompt.
 #>
+
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [switch]$Restart
+)
 
 ############################################################################################################
 #                                         Initial Setup                                                    #
@@ -44,12 +54,17 @@ If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
     Start-Sleep 1
     Write-Host "                                               1"
     Start-Sleep 1
-    Start-Process powershell.exe -ArgumentList ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f $PSCommandPath) -Verb RunAs
+    # Preserve the -Restart switch (and any future args) across the elevated relaunch.
+    $relaunchArgs = "-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f $PSCommandPath
+    if ($Restart) { $relaunchArgs += " -Restart" }
+    Start-Process powershell.exe -ArgumentList $relaunchArgs -Verb RunAs
     Exit
 }
 
-#no errors throughout
-$ErrorActionPreference = 'silentlycontinue'
+# Do NOT blanket-suppress errors. Leaving $ErrorActionPreference at its
+# default ('Continue') lets real failures (failed deletions, ACL changes,
+# typo'd commands, missing PSDrives) surface in the console/transcript.
+# Use targeted -ErrorAction SilentlyContinue only on genuine existence probes.
 
 #Create Folder
 $DebloatFolder = "C:\ProgramData\Debloat"
@@ -492,7 +507,7 @@ $UserSIDs = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Pr
     }
 
     ##Kill Cortana again
-    Get-AppxPackage - allusers Microsoft.549981C3F5F10 | Remove AppxPackage
+    Get-AppxPackage -AllUsers Microsoft.549981C3F5F10 | Remove-AppxPackage -AllUsers
 
     
 ############################################################################################################
@@ -696,7 +711,7 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies
 #                                        Disable Edge Surf Game                                            #
 #                                                                                                          #
 ############################################################################################################
-$surf = "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge"
+$surf = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
 If (!(Test-Path $surf)) {
     New-Item $surf
 }
@@ -720,4 +735,13 @@ write-host "Completed"
 
 Stop-Transcript
 
-Restart-Computer -Confirm
+# Reboot is opt-in. Without -Restart the deployment process controls reboots,
+# which is the safe default for automated/non-interactive image builds.
+if ($Restart) {
+    if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME, "Restart computer")) {
+        Restart-Computer -Force
+    }
+}
+else {
+    Write-Host "Run complete. Reboot skipped (pass -Restart to reboot automatically)."
+}

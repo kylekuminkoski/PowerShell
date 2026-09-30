@@ -36,13 +36,33 @@ param(
 [parameter(
         Mandatory         = $true,
         ValueFromPipeline = $true)]
-    [string[]]$ips
+    [string[]]$ips,
+
+    # When set, certificate validation is bypassed for the iLO connections.
+    # Defaults to OFF: certificate validation stays ON. Only use this for
+    # known/trusted self-signed iLO certificates on an isolated management network.
+    [switch]$SkipCertificateCheck
 )
 #endregion
 
 #region sslcert
-# Skip self signed stuff for the duration of the script
-add-type @"
+# Certificate validation stays ON by default. Only bypass it when the caller
+# explicitly passes -SkipCertificateCheck.
+$IsPS6Plus = $PSVersionTable.PSVersion.Major -ge 6
+# Holds the previous CertificatePolicy on PS5.1 so we can restore it in a finally block.
+$script:PreviousCertPolicy = $null
+
+if ($SkipCertificateCheck)
+{
+    Write-Warning "Certificate validation is being BYPASSED for iLO connections (-SkipCertificateCheck). Credentials may be exposed to man-in-the-middle attacks. Only use this on a trusted/isolated network."
+
+    if (-not $IsPS6Plus)
+    {
+        # PS5.1 has no per-request -SkipCertificateCheck. Install a process-wide
+        # override, but remember the previous policy so we can restore it later.
+        if (-not ([System.Management.Automation.PSTypeName]'TrustAllCertsPolicy').Type)
+        {
+            add-type @"
     using System.Net;
     using System.Security.Cryptography.X509Certificates;
     public class TrustAllCertsPolicy : ICertificatePolicy {
@@ -53,7 +73,19 @@ add-type @"
         }
     }
 "@
-[System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+        }
+        $script:PreviousCertPolicy = [System.Net.ServicePointManager]::CertificatePolicy
+        [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+    }
+}
+
+# Splat passed to every Invoke-RestMethod call. On PS6+ it scopes the cert
+# bypass to the individual request; on PS5.1 it stays empty.
+$IloRestArgs = @{}
+if ($SkipCertificateCheck -and $IsPS6Plus)
+{
+    $IloRestArgs['SkipCertificateCheck'] = $true
+}
 #endregion
 
 #region start processing
@@ -65,8 +97,10 @@ $Sub_Meth = "login"
 $Sub1 = "Post"
 $Sub2 = "Get"
 
+try
+{
 foreach ($ip in $ips)
-{ 
+{
     # You could adjust the line below for different port (default https (443))
     $Site = "https://$ip" 
     $Site += "/json/login_session"
@@ -84,7 +118,7 @@ foreach ($ip in $ips)
     try{
 
         # Try Login
-        $Sess = Invoke-RestMethod -Method $Sub1 -Uri $Site -Body $Crafted -SessionVariable 'Sessie'
+        $Sess = Invoke-RestMethod -Method $Sub1 -Uri $Site -Body $Crafted -SessionVariable 'Sessie' @IloRestArgs
 
         # If you want to, take a session key ($s1) and add code to edit/store data - not used in the -original- script
         # $s1 = $Sess.session_key
@@ -131,7 +165,7 @@ foreach ($ip in $ips)
     $Ovw = "/json/overview"
 
     $pg_ovw = $Plain_Site + $Ovw
-    $GenOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_ovw -WebSession $Sessie | ConvertTo-Json
+    $GenOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_ovw -WebSession $Sessie @IloRestArgs | ConvertTo-Json
     
     $hstb1 = @{}
     (ConvertFrom-Json $GenOvw).psobject.properties | Foreach {$hstb1[$_.Name] = $_.Value}
@@ -192,7 +226,7 @@ foreach ($ip in $ips)
         $Health = "/json/health_summary"
 
         $pg_health = $Plain_Site + $Health
-        $HealthOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_health -WebSession $Sessie | ConvertTo-Json
+        $HealthOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_health -WebSession $Sessie @IloRestArgs | ConvertTo-Json
     
         $hstb2 = @{}
         (ConvertFrom-Json $HealthOvw).psobject.properties | Foreach {$hstb2[$_.Name] = $_.Value}
@@ -214,7 +248,7 @@ foreach ($ip in $ips)
                         $strg = "/json/health_phy_drives"
 
                         $pg_strg = $Plain_Site + $strg
-                        $Errstrg = Invoke-RestMethod -Method $Sub2 -Uri $pg_strg -WebSession $Sessie | ConvertTo-Json -Depth 5
+                        $Errstrg = Invoke-RestMethod -Method $Sub2 -Uri $pg_strg -WebSession $Sessie @IloRestArgs | ConvertTo-Json -Depth 5
 
                         $NwErrstrg = $Errstrg | ConvertFrom-Json
 
@@ -341,7 +375,7 @@ foreach ($ip in $ips)
                         $Fans = "/json/health_fans"
 
                         $pg_fans = $Plain_Site + $Fans
-                        $FansOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_fans -WebSession $Sessie | ConvertTo-Json
+                        $FansOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_fans -WebSession $Sessie @IloRestArgs | ConvertTo-Json
 
                         $errFans = $FansOvw| ConvertFrom-Json
 
@@ -376,7 +410,7 @@ foreach ($ip in $ips)
                         $Pwr = "/json/power_supplies"
 
                         $pg_stroom = $Plain_Site + $Pwr
-                        $PwrOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_stroom -WebSession $Sessie | ConvertTo-Json -Depth 5
+                        $PwrOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_stroom -WebSession $Sessie @IloRestArgs | ConvertTo-Json -Depth 5
     
                         $errPwr = $PwrOvw | ConvertFrom-Json
 
@@ -476,7 +510,7 @@ foreach ($ip in $ips)
                         $Mem = "/json/mem_info"
 
                         $pg_mem = $Plain_Site + $Mem
-                        $MemOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_mem -WebSession $Sessie | ConvertTo-Json
+                        $MemOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_mem -WebSession $Sessie @IloRestArgs | ConvertTo-Json
 
                         $errMem = $MemOvw| ConvertFrom-Json
 
@@ -561,7 +595,7 @@ foreach ($ip in $ips)
                         $Temp = "/json/health_temperature"
 
                         $pg_temp = $Plain_Site + $Temp
-                        $TempOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_temp -WebSession $Sessie | ConvertTo-Json
+                        $TempOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_temp -WebSession $Sessie @IloRestArgs | ConvertTo-Json
 
                         $errTemp = $TempOvw| ConvertFrom-Json
 
@@ -636,7 +670,7 @@ foreach ($ip in $ips)
                         $Cpu = "/json/proc_info"
 
                         $pg_cpu = $Plain_Site + $Cpu
-                        $CpuOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_cpu -WebSession $Sessie | ConvertTo-Json
+                        $CpuOvw = Invoke-RestMethod -Method $Sub2 -Uri $pg_cpu -WebSession $Sessie @IloRestArgs | ConvertTo-Json
 
                         $errCpu = $CpuOvw| ConvertFrom-Json
 
@@ -689,6 +723,16 @@ foreach ($ip in $ips)
 
     }
 
+}
+}
+finally
+{
+    # Restore the previous certificate validation policy on PS5.1 so the bypass
+    # does not leak into the rest of the session.
+    if ($SkipCertificateCheck -and -not $IsPS6Plus)
+    {
+        [System.Net.ServicePointManager]::CertificatePolicy = $script:PreviousCertPolicy
+    }
 }
 #endregion
 

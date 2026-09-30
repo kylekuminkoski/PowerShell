@@ -9,7 +9,7 @@ process {
  foreach ($Computer in $ComputerName) {
   if(Test-Connection -ComputerName $Computer -Count 1 -ea 0) {
    try {
-    $Networks = Get-WmiObject Win32_NetworkAdapterConfiguration -ComputerName $Computer -EA Stop | ? {$_.IPEnabled}
+    $Networks = Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -ComputerName $Computer -ErrorAction Stop | ? {$_.IPEnabled}
    } catch {
         Write-Warning "Error occurred while querying $computer."
         Continue

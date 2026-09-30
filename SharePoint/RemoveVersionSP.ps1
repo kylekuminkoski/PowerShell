@@ -1,3 +1,6 @@
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+param()
+
 $Sites = Import-Csv "C:\Users\mhollier\OneDrive - Bastionpoint Technology LLC (1)\Documents\Swig\AllSitesData2.csv"
 foreach ($Site in $Sites) {
 #Config Parameters
@@ -42,21 +45,28 @@ Try {
             If($VersionsToDelete -gt 0)
             {
                 write-host -f Cyan "`t Total Number of Versions of the File:" $VersionsCount
-                $VersionCounter= 0
+                $DeletedCount = 0
                 #Delete versions
-                For($i=0; $i -lt $VersionsToDelete; $i++)
+                For($VersionCounter=0; $VersionCounter -lt $VersionsCount -and $DeletedCount -lt $VersionsToDelete; $VersionCounter++)
                 {
                     If($Versions[$VersionCounter].IsCurrentVersion)
                     {
-                       $VersionCounter++
                        Write-host -f Magenta "`t`t Retaining Current Major Version:"$Versions[$VersionCounter].VersionLabel
                        Continue
                     }
-                    Write-host -f Cyan "`t Deleting Version:" $Versions[$VersionCounter].VersionLabel
-                    $Versions[$VersionCounter].DeleteObject()
+                    $VersionLabel = $Versions[$VersionCounter].VersionLabel
+                    If($PSCmdlet.ShouldProcess("$($File.Name) (version $VersionLabel)", "Delete version"))
+                    {
+                        Write-host -f Cyan "`t Deleting Version:" $VersionLabel
+                        $Versions[$VersionCounter].DeleteObject()
+                        $DeletedCount++
+                    }
                 }
-                $Ctx.ExecuteQuery()
-                Write-Host -f Green "`t Version History is cleaned for the File:"$File.Name
+                If($DeletedCount -gt 0)
+                {
+                    $Ctx.ExecuteQuery()
+                    Write-Host -f Green "`t Version History is cleaned for the File:"$File.Name
+                }
             }
         }
     }

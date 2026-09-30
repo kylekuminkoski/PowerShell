@@ -1,3 +1,9 @@
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+Param(
+    # Hard cap on the number of objects disabled per run as a blast-radius safeguard.
+    [int]$MaxObjectsToProcess = 250
+)
+
 Function Get-OldComputers {
     $filter = "(&"
     $filter += "(name=*)"
@@ -75,23 +81,36 @@ Function Get-OldComputers {
     }
 
     Function Disable-Computer {
+        [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
         Param(
             [Parameter(ValueFromPipeline)]
             [PSCustomObject]$Computer
         )
 
+        # Surface non-terminating AD failures as terminating so try/catch can react
+        # and we do not silently leave accounts in an inconsistent state.
+        $ErrorActionPreference = 'Stop'
+
         $currentDate = Get-Date -Format "MM/dd/yyyy"
 
         $description = "DISABLED $currentDate KRK " + $Computer.Description
 
-        Set-ADComputer -Identity $Computer.DistinguishedName -Description $description
-        Set-ADComputer -Identity $Computer.DistinguishedName -Enabled $false
-        Move-ADObject -Identity $Computer.DistinguishedName -TargetPath "OU=Disabled,OU=Test,DC=domain,DC=org"
+        try {
+            if ($PSCmdlet.ShouldProcess($Computer.DistinguishedName, "Disable AD computer account and move to OU=Disabled")) {
+                Set-ADComputer -Identity $Computer.DistinguishedName -Description $description -ErrorAction Stop
+                Set-ADComputer -Identity $Computer.DistinguishedName -Enabled $false -ErrorAction Stop
+                Move-ADObject -Identity $Computer.DistinguishedName -TargetPath "OU=Disabled,OU=Test,DC=domain,DC=org" -ErrorAction Stop
+            }
+        }
+        catch {
+            Write-Error "Failed to disable/move computer '$($Computer.DistinguishedName)': $_"
+            return
+        }
 
         try {
             $user = Get-ADUser -Identity $Computer.Name -Properties Description, LastLogonDate -ErrorAction SilentlyContinue
             } catch {}
-            
+
             if ($user){
 
                 if ($user.LastLogonDate -gt [datetime]"1/1/2023") {
@@ -100,9 +119,17 @@ Function Get-OldComputers {
                 }
                 $description = "DISABLED $currentDate KRK " + $user.Description
 
-                Set-ADUser -Identity $user.DistinguishedName -Description $description
-                Set-ADUser -Identity $user.DistinguishedName -Enabled $false 
-                Move-ADObject -Identity $user.DistinguishedName -TargetPath "OU=Script_Disabled,OU=Disabled,OU=domain.Users,DC=domain,DC=org"
+                try {
+                    if ($PSCmdlet.ShouldProcess($user.DistinguishedName, "Disable AD user account and move to OU=Script_Disabled")) {
+                        Set-ADUser -Identity $user.DistinguishedName -Description $description -ErrorAction Stop
+                        Set-ADUser -Identity $user.DistinguishedName -Enabled $false -ErrorAction Stop
+                        Move-ADObject -Identity $user.DistinguishedName -TargetPath "OU=Script_Disabled,OU=Disabled,OU=domain.Users,DC=domain,DC=org" -ErrorAction Stop
+                    }
+                }
+                catch {
+                    Write-Error "Failed to disable/move user '$($user.DistinguishedName)': $_"
+                    return
+                }
 
             }
 
@@ -137,12 +164,19 @@ Function Get-OldComputers {
     $count = 1
     $computers = Get-OldComputers
 
-     foreach ($computer in $computers) { 
+     foreach ($computer in $computers) {
          $count += 1
          $computer | New-StaleDeviceReportItem -StaleTable $StaleDevicesReportTable
-         $computer | Disable-Computer
 
-        #if ($count -gt 250) { break }
+         # Blast-radius safeguard: stop disabling once the per-run cap is reached.
+         # The report above still captures every stale device.
+         if ($count -gt $MaxObjectsToProcess) {
+             Write-Warning "Reached MaxObjectsToProcess ($MaxObjectsToProcess); skipping further disable operations. Re-run with a higher -MaxObjectsToProcess if intended."
+             continue
+         }
+
+         # Propagate -WhatIf/-Confirm from the script invocation through to Disable-Computer.
+         $computer | Disable-Computer
      }
 
     Format-AuditReport -StaleTable $StaleDevicesReportTable

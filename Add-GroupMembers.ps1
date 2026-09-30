@@ -1,3 +1,6 @@
+[CmdletBinding(SupportsShouldProcess)]
+param()
+
 # Import AD Module
 Import-Module ActiveDirectory
 
@@ -29,8 +32,10 @@ foreach ($User in $Users) {
         }
         else {
             # Add user to group
-            Add-ADGroupMember -Identity $Group -Members $ADUser.SamAccountName -WhatIf
-            Write-Host "Added $UPN to $Group" -ForeGroundColor Green
+            Add-ADGroupMember -Identity $Group -Members $ADUser.SamAccountName
+            if ($?) {
+                Write-Host "Added $UPN to $Group" -ForeGroundColor Green
+            }
         }
     }
 }

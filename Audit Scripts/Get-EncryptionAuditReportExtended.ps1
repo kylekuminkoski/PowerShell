@@ -33,7 +33,7 @@ try {
 }
 catch {
     Write-Error "Could not import the Active Directory module. Check the network and try again."
-    Exit-Command
+    exit 1
 }   
 
 $volumeTypeTable = @{0 = "SYSTEM"; 1 = "FIXED DISK"; 2 = "REMOVABLE"; 3 = "N/A" }

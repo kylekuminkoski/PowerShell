@@ -28,6 +28,18 @@ C:\ProgramData\Debloat\Debloat.log
   only be left with changes made to HKLM.
 #>
 
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+param(
+    # Path for the debloat transcript / log output.
+    [string]$LogPath = "C:\ProgramData\Debloat\Debloat.log",
+
+    # Skip the automatic reboot at the end of the run.
+    [switch]$SkipReboot
+)
+# NOTE: SupportsShouldProcess is declared so -WhatIf/-Confirm propagate to supporting
+# cmdlets (Remove-Item, Set-ItemProperty, etc.). Individual destructive blocks should be
+# further gated with if ($PSCmdlet.ShouldProcess(<target>,<action>)) as a follow-up.
+
 ############################################################################################################
 #                                         Initial Setup                                                    #
 #                                                                                                          #
@@ -48,8 +60,13 @@ If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
     Exit
 }
 
-#no errors throughout
-$ErrorActionPreference = 'silentlycontinue'
+# Surface errors in the transcript instead of silently swallowing them. The previous blanket
+# 'SilentlyContinue' hid every failure across destructive operations (registry deletes, ACL
+# changes, file removals, service changes), producing an inconsistent image with no indication
+# anything went wrong. 'Continue' keeps the script moving past independent/benign failures
+# (e.g. a package already absent) while still logging them. Use targeted -ErrorAction Stop
+# inside try/catch for individual state-changing blocks that must succeed.
+$ErrorActionPreference = 'Continue'
 
 #Create Folder
 $DebloatFolder = "C:\ProgramData\Debloat"
@@ -63,7 +80,7 @@ Else {
     Write-Output "The folder $DebloatFolder was successfully created."
 }
 
-Start-Transcript -Path "C:\ProgramData\Debloat\Debloat.log"
+Start-Transcript -Path $LogPath
 
 $builtin = "Builtin"
 
@@ -526,7 +543,7 @@ $UserSIDs = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Pr
     }
 
     ##Kill Cortana again
-    Get-AppxPackage - allusers Microsoft.549981C3F5F10 | Remove AppxPackage
+    Get-AppxPackage -AllUsers -Name Microsoft.549981C3F5F10 | Remove-AppxPackage
 
     
 ############################################################################################################
@@ -806,13 +823,17 @@ Set-ItemProperty $registryPath dontdisplaylastusername -Value 0
 Set-ItemProperty $registryPath DontDisplayUserName -Value 0
 Set-ItemProperty $registryPath EnableLUA -Value 1
 Set-ItemProperty $registryPath FilterAdministratorToken -Value 1
-Set-ItemProperty $registryPath PromptOnSecureDesktop -Value 0
+Set-ItemProperty $registryPath PromptOnSecureDesktop -Value 1
 Set-ItemProperty $registryPath ConsentPromptBehaviorUser -Value 1
 Set-ItemProperty $registryPath ConsentPromptBehaviorAdmin -Value 2
 Set-ItemProperty $registryPath EnableInstallerDetection -Value 1
 
-#Disable Remote UAC Restriction for PDQ
-Set-ItemProperty $registryPath LocalAccountTokenFilterPolicy -Value 1
+# SECURITY: Do NOT set LocalAccountTokenFilterPolicy=1 on a hardened image. Granting local
+# admin accounts a full elevated token over the network is a known lateral-movement /
+# Pass-the-Hash enabler flagged by CIS and CMMC baselines. If remote admin is genuinely
+# required for deployment tooling (e.g. PDQ), enable it only for a time-boxed deployment
+# phase and revert before image capture, or use a domain account with proper UAC remote
+# restrictions.
 
 #Hide all Start Panel items except for the user profile folder on the desktop (0 to show / 1 to hide )
 $registryPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
@@ -867,4 +888,9 @@ write-host "Completed"
 
 Stop-Transcript
 
-Restart-Computer -Confirm
+if ($SkipReboot) {
+    Write-Host "SkipReboot specified - not rebooting. Reboot manually to finalize changes."
+}
+else {
+    Restart-Computer -Confirm
+}

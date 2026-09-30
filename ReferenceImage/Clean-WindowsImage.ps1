@@ -102,7 +102,7 @@ Function Remove-AllFilesInFolder ($strFolder) {
 }
  
 Function Remove-FilesInArray ($arrFiles) {
-    Foreach ($File in $Files) {
+    Foreach ($File in $arrFiles) {
         try {
             # Remove the file
             Remove-Item -Path $file.Fullname -Force

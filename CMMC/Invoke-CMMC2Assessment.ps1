@@ -2296,11 +2296,13 @@ try {
     Write-Host "`nManagement Type: " -NoNewline
     Write-Host "$($script:ManagementInfo.ManagementType)" -ForegroundColor Cyan
 
-    Write-Host "`nReport Location: " -NoNewline
-    Write-Host $reportFile -ForegroundColor Cyan
+    if (-not $SkipHTMLReport -and $reportFile) {
+        Write-Host "`nReport Location: " -NoNewline
+        Write-Host $reportFile -ForegroundColor Cyan
 
-    Write-Host "`nOpening report in default browser..." -ForegroundColor Yellow
-    Start-Process $reportFile
+        Write-Host "`nOpening report in default browser..." -ForegroundColor Yellow
+        Start-Process $reportFile
+    }
 
     Write-Host "`nNote: This assessment evaluates technical controls for cloud-managed and traditional devices." -ForegroundColor Yellow
     Write-Host "Administrative, physical, and procedural controls require manual verification." -ForegroundColor Yellow

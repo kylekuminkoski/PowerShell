@@ -68,7 +68,7 @@ Function New-StaleDeviceReportItem {
         Name = $Computer.Name
         "Operating System" = $Computer.OperatingSystem
         Description = $Computer.Description
-        "Last Logon Date" = $lastLogon | Get-Date -Format "MM/dd/yyyy"
+        "Last Logon Date" = $Computer.LastLogonDate | Get-Date -Format "MM/dd/yyyy"
         "Total Days Away" = $TotalDaysAway
     }
 
@@ -152,8 +152,8 @@ Function Format-AuditReport {
     $currentDate = Get-Date -Format "MM_dd_yyyy"
     $WorkBookPath = "H:\Profile\Documents\$($Env:USERNAME)\My Documents\EncryptionAuditReport_$currentDate.xlsx"
 
-    $EncryptionReportTable.values | Sort-Object -Property Name -Unique | Export-XLSX -Path $WorkBookPath -WorksheetName "Encryption Report" -Table -AutoFit -Force
-    $StaleDevicesReportTable.values | Sort-Object -Property Name -Unique | Export-XLSX -Path $WorkBookPath -WorksheetName "Old Devices" -Table -AutoFit
+    $MainTable.values | Sort-Object -Property Name -Unique | Export-XLSX -Path $WorkBookPath -WorksheetName "Encryption Report" -Table -AutoFit -Force
+    $StaleTable.values | Sort-Object -Property Name -Unique | Export-XLSX -Path $WorkBookPath -WorksheetName "Old Devices" -Table -AutoFit
     New-Excel -Path $WorkBookPath | Add-PivotTable -WorkSheetName "Encryption Report" -PivotTableWorksheetName "Summary" -PivotRows "Encryption" -PivotValues "Encryption" -ChartTitle "Summary of Encryption Audit" -ChartType "Pie3D" -ChartHeight 600 -ChartWidth 800 -Passthru | Save-Excel -Close
     Write-Host "Excel Workbook saved to $WorkBookPath"
 }

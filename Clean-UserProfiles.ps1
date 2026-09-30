@@ -1,6 +1,9 @@
 # This script queries all user profiles on the machine and deletes any that have not been modified in 365 days.
 # The results are formatted in a table and the user is prompted to review and confirm the results before deletion.
 
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+param()
+
 $ErrorActionPreference = 'Continue'
 
 # Table Creation
@@ -27,14 +30,17 @@ Function New-TableItem {
 
 #Removal Function
 Function Remove-UserProfile {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
     Param(
         [Parameter(ValueFromPipeline)]
         [PSCustomObject]$TableItem
     )
     $LocalPath = "$env:SystemDrive\Users\$($TableItem.Username)"
 
-    # Removal line will prompt user to confirm deletion before each profile
-    Remove-Item -Path $LocalPath -Recurse -Force -Confirm
+    # Gate the deletion with ShouldProcess so -WhatIf and -Confirm work consistently.
+    if ($PSCmdlet.ShouldProcess($LocalPath, "Remove user profile")) {
+        Remove-Item -Path $LocalPath -Recurse -Force
+    }
 }
 
 

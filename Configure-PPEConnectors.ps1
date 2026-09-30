@@ -1,5 +1,15 @@
-﻿Write-Host 'Connecting to exchange- Use Tenant admin credentials'
-Connect-ExchangeOnline
+﻿[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
+param()
+
+$ErrorActionPreference = 'Stop'
+
+try {
+    Write-Host 'Connecting to exchange- Use Tenant admin credentials'
+    Connect-ExchangeOnline
+}
+catch {
+    throw "Failed to connect to Exchange Online: $($_.Exception.Message)"
+}
 
 # Define the IP addresses for Proofpoint Essentials and other authorized mail systems
 $ProofpointIPs = @(
@@ -19,24 +29,33 @@ Write-Host 'Configuring Outbound Connector'
 $OutboundConnectorName = "Outbound connector for Proofpoint Essentials"
 $ExistingOutboundConnector = Get-OutboundConnector -Identity $OutboundConnectorName -ErrorAction SilentlyContinue
 
-if ($ExistingOutboundConnector) {
-    Write-Host "Outbound Connector '$OutboundConnectorName' already exists. Updating its settings."
-    $OutboundConnectorEnabledState = $ExistingOutboundConnector.Enabled
-    Set-OutboundConnector -Identity $OutboundConnectorName `
-        -TlsSettings certificatevalidation `
-        -RecipientDomains * `
-        -SmartHosts "outbound-us1.ppe-hosted.com" `
-        -UseMXRecord $False `
-        -Enabled $OutboundConnectorEnabledState
-} else {
-    Write-Host "Outbound Connector '$OutboundConnectorName' not found. Creating a new one."
-    New-OutboundConnector -Name $OutboundConnectorName `
-        -comment "Outbound connector for Proofpoint Essentials" `
-        -TlsSettings certificatevalidation `
-        -RecipientDomains * `
-        -SmartHosts "outbound-us1.ppe-hosted.com" `
-        -UseMXRecord $False `
-        -Enabled $false
+try {
+    if ($ExistingOutboundConnector) {
+        Write-Host "Outbound Connector '$OutboundConnectorName' already exists. Updating its settings."
+        $OutboundConnectorEnabledState = $ExistingOutboundConnector.Enabled
+        if ($PSCmdlet.ShouldProcess($OutboundConnectorName, 'Update Outbound Connector')) {
+            Set-OutboundConnector -Identity $OutboundConnectorName `
+                -TlsSettings certificatevalidation `
+                -RecipientDomains * `
+                -SmartHosts "outbound-us1.ppe-hosted.com" `
+                -UseMXRecord $False `
+                -Enabled $OutboundConnectorEnabledState
+        }
+    } else {
+        Write-Host "Outbound Connector '$OutboundConnectorName' not found. Creating a new one."
+        if ($PSCmdlet.ShouldProcess($OutboundConnectorName, 'Create Outbound Connector')) {
+            New-OutboundConnector -Name $OutboundConnectorName `
+                -comment "Outbound connector for Proofpoint Essentials" `
+                -TlsSettings certificatevalidation `
+                -RecipientDomains * `
+                -SmartHosts "outbound-us1.ppe-hosted.com" `
+                -UseMXRecord $False `
+                -Enabled $false
+        }
+    }
+}
+catch {
+    throw "Failed to configure Outbound Connector '$OutboundConnectorName': $($_.Exception.Message)"
 }
 
 $VarTestEml = Read-Host -Prompt 'What Email would you like to use for validation? (Your BPT email will work here)'
@@ -49,24 +68,33 @@ Write-Host 'Configuring Inbound Connector'
 $InboundConnectorName = "Inbound connector for Proofpoint Essentials"
 $ExistingInboundConnector = Get-InboundConnector -Identity $InboundConnectorName -ErrorAction SilentlyContinue
 
-if ($ExistingInboundConnector) {
-    Write-Host "Inbound Connector '$InboundConnectorName' already exists. Updating its settings."
-    $InboundConnectorEnabledState = $ExistingInboundConnector.Enabled
-    Set-InboundConnector -Identity $InboundConnectorName `
-        -SenderDomains "smtp:*;1" `
-        -RequireTls $true `
-        -SenderIPAddresses $ProofpointIPs `
-        -RestrictDomainsToIPAddresses $true `
-        -Enabled $InboundConnectorEnabledState
-} else {
-    Write-Host "Inbound Connector '$InboundConnectorName' not found. Creating a new one."
-    New-InboundConnector -Name $InboundConnectorName `
-        -comment "Inbound connector for Proofpoint Essentials" `
-        -SenderDomains "smtp:*;1" `
-        -RequireTls $true `
-        -SenderIPAddresses $ProofpointIPs `
-        -RestrictDomainsToIPAddresses $true `
-        -Enabled $false
+try {
+    if ($ExistingInboundConnector) {
+        Write-Host "Inbound Connector '$InboundConnectorName' already exists. Updating its settings."
+        $InboundConnectorEnabledState = $ExistingInboundConnector.Enabled
+        if ($PSCmdlet.ShouldProcess($InboundConnectorName, 'Update Inbound Connector')) {
+            Set-InboundConnector -Identity $InboundConnectorName `
+                -SenderDomains "smtp:*;1" `
+                -RequireTls $true `
+                -SenderIPAddresses $ProofpointIPs `
+                -RestrictDomainsToIPAddresses $true `
+                -Enabled $InboundConnectorEnabledState
+        }
+    } else {
+        Write-Host "Inbound Connector '$InboundConnectorName' not found. Creating a new one."
+        if ($PSCmdlet.ShouldProcess($InboundConnectorName, 'Create Inbound Connector')) {
+            New-InboundConnector -Name $InboundConnectorName `
+                -comment "Inbound connector for Proofpoint Essentials" `
+                -SenderDomains "smtp:*;1" `
+                -RequireTls $true `
+                -SenderIPAddresses $ProofpointIPs `
+                -RestrictDomainsToIPAddresses $true `
+                -Enabled $false
+        }
+    }
+}
+catch {
+    throw "Failed to configure Inbound Connector '$InboundConnectorName': $($_.Exception.Message)"
 }
 Write-Host ''
 Write-Host ''
@@ -75,19 +103,27 @@ Write-Host 'Configuring Spam Bypass rule'
 $TransportRuleName = "Bypass Spam Filter (PPE)"
 $ExistingTransportRule = Get-TransportRule -Identity $TransportRuleName -ErrorAction SilentlyContinue
 
-if ($ExistingTransportRule) {
-    Write-Host "Transport Rule '$TransportRuleName' already exists. Updating its settings."
-																		 
-    Set-TransportRule -Identity $TransportRuleName `
-        -SenderIpRanges $ProofpointIPs `
-        -SetSCL -1 
-} else {
-    Write-Host "Transport Rule '$TransportRuleName' not found. Creating a new one."
-    New-TransportRule -Name $TransportRuleName `
-        -Priority 0 `
-        -SenderIpRanges $ProofpointIPs `
-        -SetSCL -1 `
-        -Enabled $false
+try {
+    if ($ExistingTransportRule) {
+        Write-Host "Transport Rule '$TransportRuleName' already exists. Updating its settings."
+        if ($PSCmdlet.ShouldProcess($TransportRuleName, 'Update Transport Rule')) {
+            Set-TransportRule -Identity $TransportRuleName `
+                -SenderIpRanges $ProofpointIPs `
+                -SetSCL -1
+        }
+    } else {
+        Write-Host "Transport Rule '$TransportRuleName' not found. Creating a new one."
+        if ($PSCmdlet.ShouldProcess($TransportRuleName, 'Create Transport Rule')) {
+            New-TransportRule -Name $TransportRuleName `
+                -Priority 0 `
+                -SenderIpRanges $ProofpointIPs `
+                -SetSCL -1 `
+                -Enabled $false
+        }
+    }
+}
+catch {
+    throw "Failed to configure Transport Rule '$TransportRuleName': $($_.Exception.Message)"
 }
 Write-Host ''
 Write-Host ''
@@ -100,11 +136,22 @@ $decision = $Host.UI.PromptForChoice($title, $question, $choices, 1)
 
 if ($decision -eq 0) {
     # Explicitly enable only the connectors and rule by their names
-    Set-OutboundConnector -Identity $OutboundConnectorName -Enabled $true
-    Set-InboundConnector -Identity $InboundConnectorName -Enabled $true
-    # Enable-TransportRule is the correct cmdlet to enable a transport rule
-    Enable-TransportRule -Identity $TransportRuleName
-    Write-Host 'Proofpoint connectors and rule have been enabled.'
+    try {
+        if ($PSCmdlet.ShouldProcess($OutboundConnectorName, 'Enable Outbound Connector')) {
+            Set-OutboundConnector -Identity $OutboundConnectorName -Enabled $true
+        }
+        if ($PSCmdlet.ShouldProcess($InboundConnectorName, 'Enable Inbound Connector')) {
+            Set-InboundConnector -Identity $InboundConnectorName -Enabled $true
+        }
+        # Enable-TransportRule is the correct cmdlet to enable a transport rule
+        if ($PSCmdlet.ShouldProcess($TransportRuleName, 'Enable Transport Rule')) {
+            Enable-TransportRule -Identity $TransportRuleName
+        }
+        Write-Host 'Proofpoint connectors and rule have been enabled.'
+    }
+    catch {
+        throw "Failed to enable Proofpoint connectors and rule: $($_.Exception.Message)"
+    }
 } else {
     Write-Host 'Proofpoint connectors and rule have not been enabled. Their previous states have been preserved for existing objects.'
 }

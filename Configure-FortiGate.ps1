@@ -73,7 +73,7 @@ if ($Configs.ContainsKey("ISPIPAddress")) {
     try {
         Get-FGTRouterStatic | Remove-FGTRouterStatic -Confirm:$false
         $DefaultRoute = Add-FGTRouterStatic -dst 0.0.0.0/0.0.0.0 -gateway $Configs.ISPIPAddress -device wan -distance 10
-        Write-Host "Created default route 0.0.0.0/0.0.0.0 on wan port to $(Configs.ISPIPAddress)" -ForegroundColor 'Green'
+        Write-Host "Created default route 0.0.0.0/0.0.0.0 on wan port to $($Configs.ISPIPAddress)" -ForegroundColor 'Green'
     }
     catch {
         Write-Host "Static route already exists. Skipping route creation." -ForegroundColor 'Yellow'

@@ -33,6 +33,7 @@ try {
 }
 catch {
     Write-Host "ERROR: Could not connect to SharePoint Tenant. Please double check the Tenant Name, Application ID, and delegated permissions in Entra"
+    throw "Aborting: initial connection to SharePoint tenant '$TenantUrl' failed. $_"
 }
 
 

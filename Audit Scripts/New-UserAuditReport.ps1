@@ -37,7 +37,7 @@ Function New-ReportItem {
 
         # Calculate how long since user has checked in.
         $lastLogon = $User | Select-Object -ExpandProperty LastLogonDate
-        $passLastSet = $User | Select-Object -ExpandProperty LastLogonDate
+        $passLastSet = $User | Select-Object -ExpandProperty PasswordLastSet
         $currentDate = Get-Date
     
         if ($null -ne $lastLogon) { $timeAway = $currentDate - $lastLogon } 

@@ -63,7 +63,7 @@ try {
     $certThumbprint = (Get-PfxCertificate -FilePath $certPath).Thumbprint
     if (-not (Is-CertificateInstalled -thumbprint $certThumbprint)) {
         Write-Host "Certificate is not installed. Installing..."
-     #   Import-Certificate -FilePath $certPath -CertStoreLocation Cert:\LocalMachine\TrustedPublisher -ErrorAction Stop
+        Import-Certificate -FilePath $certPath -CertStoreLocation Cert:\LocalMachine\TrustedPublisher -ErrorAction Stop
         Write-Host "Certificate installed successfully."
     } else {
         Write-Host "Certificate is already installed. Skipping installation."

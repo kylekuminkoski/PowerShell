@@ -73,7 +73,7 @@ $privateKeyBase64
 
 # Public key to Base64
 $publicKey = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPublicKey($cert)
-$publicKeyBytes = $privateKey.Key.Export([System.Security.Cryptography.CngKeyBlobFormat]::Pkcs8PrivateBlob)
+$publicKeyBytes = $publicKey.ExportSubjectPublicKeyInfo()
 $publicKeyBase64 = [System.Convert]::ToBase64String($publicKeyBytes, [System.Base64FormattingOptions]::InsertLineBreaks)
 # Public key file contents
 $publicKeyFileContent = @"

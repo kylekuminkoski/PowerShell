@@ -18,6 +18,9 @@
 #>
 #endregion
 
+[CmdletBinding()]
+param()
+
 Function Get-Manufacturer { # This function will return the host Manufacturer name
 
     $Manufacturer = Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty Manufacturer
@@ -57,6 +60,11 @@ Function Get-iLoHealth {
 }
 
 Function Get-iDracHealth {
-    
+
 
 }
+
+#region main
+# Entry point: detect the host manufacturer and run the matching health audit.
+Get-Manufacturer
+#endregion

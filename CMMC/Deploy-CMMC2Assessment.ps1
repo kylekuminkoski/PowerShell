@@ -64,7 +64,21 @@ param(
     [string]$AzureBlobURL,
 
     [Parameter(Mandatory = $false)]
-    [string]$ScriptSource = "$PSScriptRoot\Invoke-CMMC2Assessment.ps1"
+    [string]$ScriptSource = "$PSScriptRoot\Invoke-CMMC2Assessment.ps1",
+
+    # Allowlist of approved hosts that may serve the assessment script when ScriptSource is an
+    # http(s) URL or a UNC path. Remote sources outside this list are rejected (fail closed).
+    [Parameter(Mandatory = $false)]
+    [string[]]$TrustedSource = @('raw.githubusercontent.com', 'fileserver'),
+
+    # Known-good SHA256 hash of Invoke-CMMC2Assessment.ps1. When supplied, the retrieved script
+    # must match this hash before it is executed. Strongly recommended for remote sources.
+    [Parameter(Mandatory = $false)]
+    [string]$ExpectedSHA256,
+
+    # Require a valid Authenticode signature on the retrieved script before executing it.
+    [Parameter(Mandatory = $false)]
+    [switch]$RequireSignature
 )
 
 # Configuration
@@ -104,11 +118,19 @@ try {
     Write-Log "Retrieving assessment script from: $ScriptSource"
 
     if ($ScriptSource -like "http*") {
-        # Download from URL
+        # Download from URL - only from an allowlisted host (fail closed)
+        $SourceHost = ([System.Uri]$ScriptSource).Host
+        if ($SourceHost -notin $TrustedSource) {
+            throw "Refusing to download assessment script from untrusted host '$SourceHost'. Add it to -TrustedSource if it is approved. Allowed: $($TrustedSource -join ', ')"
+        }
         Invoke-WebRequest -Uri $ScriptSource -OutFile $AssessmentScript -UseBasicParsing
         Write-Log "Assessment script downloaded successfully"
     } elseif ($ScriptSource -like "\\*") {
-        # Copy from network share
+        # Copy from network share - only from an allowlisted server (fail closed)
+        $ShareHost = ($ScriptSource.TrimStart('\') -split '\\')[0]
+        if ($ShareHost -notin $TrustedSource) {
+            throw "Refusing to copy assessment script from untrusted share host '$ShareHost'. Add it to -TrustedSource if it is approved. Allowed: $($TrustedSource -join ', ')"
+        }
         Copy-Item -Path $ScriptSource -Destination $AssessmentScript -Force
         Write-Log "Assessment script copied from network share"
     } elseif (Test-Path $ScriptSource) {
@@ -120,6 +142,44 @@ try {
     }
 } catch {
     Write-Log "Failed to retrieve assessment script: $_" -Level "ERROR"
+    exit 1
+}
+
+# Verify the retrieved script before executing it (fail closed)
+try {
+    Write-Log "Verifying integrity of assessment script before execution..."
+
+    if (-not (Test-Path $AssessmentScript)) {
+        throw "Assessment script not present at $AssessmentScript; cannot verify."
+    }
+
+    # SHA256 hash verification (when an expected hash is provided)
+    if ($ExpectedSHA256) {
+        $ActualHash = (Get-FileHash -Path $AssessmentScript -Algorithm SHA256).Hash
+        if ($ActualHash -ne $ExpectedSHA256.Trim().ToUpper().Replace(' ', '')) {
+            throw "SHA256 mismatch for assessment script. Expected '$($ExpectedSHA256.Trim())' but got '$ActualHash'. Refusing to execute."
+        }
+        Write-Log "SHA256 hash verified: $ActualHash"
+    } else {
+        Write-Log "No -ExpectedSHA256 supplied; hash verification skipped. Supply a known hash for remote sources." -Level "WARN"
+    }
+
+    # Authenticode signature verification (required when -RequireSignature is set)
+    if ($RequireSignature) {
+        $Signature = Get-AuthenticodeSignature -FilePath $AssessmentScript
+        if ($Signature.Status -ne 'Valid') {
+            throw "Authenticode signature is not valid (Status: $($Signature.Status)). Refusing to execute $AssessmentScript."
+        }
+        Write-Log "Authenticode signature verified. Signer: $($Signature.SignerCertificate.Subject)"
+    }
+
+    # Fail closed: if the source was remote, require at least one form of verification
+    $IsRemoteSource = ($ScriptSource -like 'http*') -or ($ScriptSource -like '\\*')
+    if ($IsRemoteSource -and -not $ExpectedSHA256 -and -not $RequireSignature) {
+        throw "Remote ScriptSource requires integrity verification. Supply -ExpectedSHA256 and/or -RequireSignature."
+    }
+} catch {
+    Write-Log "Assessment script verification failed: $_" -Level "ERROR"
     exit 1
 }
 

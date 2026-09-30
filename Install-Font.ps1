@@ -1,6 +1,6 @@
 # This script installs fonts from a given zip archive
 
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [Parameter (Mandatory = $true)]
     $ArchivePath
@@ -15,7 +15,7 @@ if (Test-Path $ArchivePath) {
 
 }
 else {
-    Write-Error "Archive at $ArchivePath does not exist. Please check file location and try again."
+    throw "Archive at $ArchivePath does not exist. Please check file location and try again."
 }
 
 $FontsToInstall = Get-ChildItem $FontsToInstallDirectory -Recurse -Include '*.ttf', '*.ttc', '*.otf'
@@ -25,9 +25,11 @@ foreach ($Font in $FontsToInstall) {
     $InstalledFonts = "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts"
     $RegKey = Get-Item $InstalledFonts
     If ($Font.Name -ne $RegKey.GetValue($Font.BaseName)) {
-        Copy-Item $Font "C:\Windows\Fonts"
-        $null = New-ItemProperty -Name $Font.BaseName -Path "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts" -PropertyType string -Value $Font.Name -Force 
-        Write-Host "Installed Font $Name" -ForegroundColor Cyan
+        if ($PSCmdlet.ShouldProcess($Name, "Install font (copy to C:\Windows\Fonts and register in HKLM)")) {
+            Copy-Item $Font "C:\Windows\Fonts"
+            $null = New-ItemProperty -Name $Font.BaseName -Path "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts" -PropertyType string -Value $Font.Name -Force
+            Write-Host "Installed Font $Name" -ForegroundColor Cyan
+        }
     }
     else {
         Write-Host "Font $Name is already installed" -ForegroundColor Green
@@ -35,4 +37,6 @@ foreach ($Font in $FontsToInstall) {
 }
 
 #Cleanup
-Remove-Item "$PSScriptRoot\FontsToInstall" -Recurse -Force
+if ($PSCmdlet.ShouldProcess("$PSScriptRoot\FontsToInstall", "Remove directory")) {
+    Remove-Item "$PSScriptRoot\FontsToInstall" -Recurse -Force
+}

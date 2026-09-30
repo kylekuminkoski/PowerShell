@@ -17,7 +17,7 @@ foreach ($ip in $IPList) {
     if((Test-Connection $ip -BufferSize 16 -Count 1 -ea 0 -quiet)) {
         try {
                 Write-Host "Reply Recieved from $ip. Trying Registries..." -ForegroundColor "Green"
-                $ComputerInfo = Get-WmiObject -Computer $ip -Class Win32_OperatingSystem -ErrorAction Stop | Select-Object -Property *
+                $ComputerInfo = Get-CimInstance -ComputerName $ip -ClassName Win32_OperatingSystem -ErrorAction Stop | Select-Object -Property *
         
                 $ComputerObject.Name = $ComputerInfo.PSComputerName
                 $ComputerObject.IpAddress = $ip

@@ -1,25 +1,33 @@
 [CmdletBinding()]
+param()
 $VerbosePreference = "Continue"
+$ErrorActionPreference = "Stop"
 
-if ( -Not (Test-Path C:\Windows\Temp) ) {
-    New-Item -Path "C:\Windows" -Name "Temp" -ItemType Directory
+try {
+    if ( -Not (Test-Path C:\Windows\Temp) ) {
+        New-Item -Path "C:\Windows" -Name "Temp" -ItemType Directory
 
+    }
+
+    if (Test-Path C:\Windows\Temp\ALTools) {
+        Remove-Item -Path C:\Windows\Temp\ALTools -Recurse -Force
+    }
+
+    New-Item -Path "C:\Windows\Temp" -Name "ALTools" -ItemType Directory
+    $RootPath = "C:\Windows\Temp\ALTools"
+    Invoke-WebRequest -Uri "https://download.microsoft.com/download/1/f/0/1f0e9569-3350-4329-b443-822976f29284/ALTools.exe" -OutFile "$RootPath\ALTools.exe"
+
+    if (Test-Path C:\Windows\Temp\ALTools\ALTools.exe){
+        Start-Process -FilePath "$RootPath\ALTools.exe" -ArgumentList "/Q /T:$RootPath" -Wait
+    }
+
+    Expand-Archive -Path $RootPath\Alockout.zip -DestinationPath $RootPath\Alockout
+    Copy-Item $RootPath\Alockout\alockout.dll -Destination C:\Windows\System32\
 }
-
-if (Test-Path C:\Windows\Temp\ALTools) {
-    Remove-Item -Path C:\Windows\Temp\ALTools -Recurse -Force
+catch {
+    Write-Error "Failed during download/extract/copy of AL Tools: $($_.Exception.Message). No changes were made to System32."
+    exit
 }
-
-New-Item -Path "C:\Windows\Temp" -Name "ALTools" -ItemType Directory
-$RootPath = "C:\Windows\Temp\ALTools"
-Invoke-WebRequest -Uri "https://download.microsoft.com/download/1/f/0/1f0e9569-3350-4329-b443-822976f29284/ALTools.exe" -OutFile "$RootPath\ALTools.exe"
-
-if (Test-Path C:\Windows\Temp\ALTools\ALTools.exe){
-    Start-Process -FilePath "$RootPath\ALTools.exe" -ArgumentList "/Q /T:$RootPath" -Wait
-}
-
-Expand-Archive -Path $RootPath\Alockout.zip -DestinationPath $RootPath\Alockout
-Copy-Item $RootPath\Alockout\alockout.dll -Destination C:\Windows\System32\
 
 if (Test-Path C:\Windows\System32\alockout.dll){
     try {

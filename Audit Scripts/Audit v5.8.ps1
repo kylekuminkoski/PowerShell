@@ -44,6 +44,14 @@
 #v5.7 - change from hardcoded file path to "select a file" pop up
 #v5.8 - Select neweset file automatically
 
+# State-changing script (modifies AD). Advanced-function binding enables -WhatIf/-Confirm
+# on the destructive remediation actions.
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+param()
+
+# Surface failures instead of silently continuing past them.
+$ErrorActionPreference = 'Stop'
+
 # Load necessary modules
 Import-Module ActiveDirectory
 Import-Module ImportExcel
@@ -566,30 +574,35 @@ foreach ($result in $results) {
             Write-Host $($result.'Mismatched Items') -ForegroundColor DarkRed -BackgroundColor Yellow
             Write-Host "Excel value(s) to be used:"
         
-            $command = "Set-ADUser -Identity '$($result.Identity)' "
-            $ouCommand = ""
+            # Build bound parameters as DATA (not a command string) to eliminate
+            # PowerShell/LDAP injection via untrusted Excel cell values.
+            $setParams = @{ Identity = $result.Identity }
+            $ouTargetPath = $null
+            $ouObjectGuid = $null
 
             <#
             if ($result.'Mismatched Items' -match "Name") {
                 Write-Host "First Name: $($result.'Name - Excel'.Split(' ')[0])"
                 Write-Host "Last Name: $($result.'Name - Excel'.Split(' ')[1])"
-                $command += "-GivenName '$($result.'Name - Excel'.Split(' ')[0])' -Surname '$($result.'Name - Excel'.Split(' ')[1])' "
+                $setParams['GivenName'] = $result.'Name - Excel'.Split(' ')[0]
+                $setParams['Surname']  = $result.'Name - Excel'.Split(' ')[1]
             }
             #>
             if ($result.'Mismatched Items' -match "Title") {
                 Write-Host "Job Title: $($result.'Job Title - Excel')"
-                $command += "-Title '$($result.'Job Title - Excel')' "
+                $setParams['Title'] = $result.'Job Title - Excel'
             }
             if ($result.'Mismatched Items' -match "Department") {
                 Write-Host "Department: $($result.'Department - Excel')"
-                $command += "-Department '$($result.'Department - Excel')' "
+                $setParams['Department'] = $result.'Department - Excel'
             }
             if ($result.'Mismatched Items' -match "Manager") {
                 $managerName = Get-FirstLastName -name (Convert-SupervisorName -name $result.'Manager - Excel')
                 $managerName = Replace-Nickname -name $managerName
 		        $managerFirstName = $managerName.Split(' ')[0].Trim()
                 $managerLastName = $managerName.Split(' ')[1].Trim()
-                $adManager = Get-ADUser -Filter "GivenName -eq '$managerFirstName' -and Surname -eq '$managerLastName'" -Properties DistinguishedName, ObjectGUID
+                # Scriptblock filter binds names as variables (data), not injected into the filter string.
+                $adManager = Get-ADUser -Filter { GivenName -eq $managerFirstName -and Surname -eq $managerLastName } -Properties DistinguishedName, ObjectGUID
 		        if (-not $adManager) {
 			        Write-Host "Standard check failed, attempting to find user with normalized names."
 			        $adManager = Find-UserInAd -firstName $managerFirstName -lastName $managerLastName
@@ -597,39 +610,46 @@ foreach ($result in $results) {
 		        if ($adManager) {
                     $managerDN = $adManager.ObjectGUID
                     Write-Host "Manager: $managerName"
-                    $command += "-Manager '$managerDN' "
+                    $setParams['Manager'] = $managerDN
                 } else {
 			        Write-Host "No AD manager found for: $managerName"
 		        }
 	        }
             if ($result.'Mismatched Items' -match "Employee Code") {
                 Write-Host "Code: $($result.'Code - Excel')"
-                $command += "-Company '$($result.'Code - Excel')' "
+                $setParams['Company'] = $result.'Code - Excel'
             }
             if ($result.'Mismatched Items' -match "OU") {
                 Write-Host "OU: $($result.'OU - Excel')"
-                $ouDN = (Get-ADOrganizationalUnit -Filter "Name -eq '$($result.'OU - Excel')'").DistinguishedName
+                $ouName = $result.'OU - Excel'
+                # Scriptblock filter binds the OU name as a variable (data), not injected into the filter string.
+                $ouDN = (Get-ADOrganizationalUnit -Filter { Name -eq $ouName }).DistinguishedName
 		        $result.Identity
                 $guid = Get-Aduser -identity $result.Identity -Properties ObjectGUID
-                $objectGuid = $guid.ObjectGUID
-                $ouCommand = "Move-ADObject -Identity $objectGuid -TargetPath '$ouDN'"
-            
+                $ouObjectGuid = $guid.ObjectGUID
+                $ouTargetPath = $ouDN
             }
 
-            if ($command -ne "Set-ADUser -Identity '$($result.Identity)' ") {
-                Write-Host "Command to be executed: $command"
+            if ($setParams.Count -gt 1) {
+                Write-Host "Set-ADUser parameters to be applied: $(($setParams.GetEnumerator() | Where-Object { $_.Key -ne 'Identity' } | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')"
             }
-            if ($ouCommand) {
-                Write-Host "Command to move user to new OU: $ouCommand"
+            if ($ouTargetPath) {
+                Write-Host "User will be moved to new OU: $ouTargetPath"
             }
             $confirmation = Read-Host "Do you want to apply these changes? (Y/N)"
             if ($confirmation -eq "Y") {
                 try {
-                    Invoke-Expression $command
-                    $changesMade += "Changes applied for $($result.'Name - AD'): $command"
-                    if ($ouCommand) {
-                        Invoke-Expression $ouCommand
-                        $changesMade += "User moved to new OU for $($result.'Name - AD'): $ouCommand"
+                    if ($setParams.Count -gt 1) {
+                        if ($PSCmdlet.ShouldProcess($result.Identity, "Set-ADUser attributes")) {
+                            Set-ADUser @setParams
+                            $changesMade += "Changes applied for $($result.'Name - AD'): $(($setParams.GetEnumerator() | Where-Object { $_.Key -ne 'Identity' } | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')"
+                        }
+                    }
+                    if ($ouTargetPath) {
+                        if ($PSCmdlet.ShouldProcess($result.Identity, "Move-ADObject to $ouTargetPath")) {
+                            Move-ADObject -Identity $ouObjectGuid -TargetPath $ouTargetPath
+                            $changesMade += "User moved to new OU for $($result.'Name - AD'): $ouTargetPath"
+                        }
                     }
                 } catch {
                     $errorMessage = "`nError applying changes for $($result.'Name - AD'): $_"
